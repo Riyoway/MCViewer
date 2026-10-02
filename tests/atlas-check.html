@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<title>Atlas GPU check</title>
+<link rel="icon" href="data:,">
+<pre id="result">Checking…</pre>
+<script type="module">
+import { CanvasTexture, NearestFilter, NearestMipmapLinearFilter, Scene, PerspectiveCamera, WebGLRenderer, WebGLRenderTarget } from 'three';
+import { AssetManager } from '/src/core/AssetManager.ts';
+import { appendElement, emptyMesh } from '/src/minecraft/Mesher.ts';
+
+// Render blue tiles surrounded by red. A single red pixel exposes wrong-row sampling.
+try {
+  const assets=await AssetManager.load(),{size,cell}=assets.manifest.atlas,columns=size/cell;
+  const image=document.createElement('canvas');image.width=image.height=size;
+  const paint=image.getContext('2d'),texture=new CanvasTexture(image);
+  texture.magFilter=NearestFilter;texture.minFilter=NearestMipmapLinearFilter;
+  assets.opaque.map.dispose();assets.opaque.map=texture;
+  const tile=assets.manifest.atlas.tiles.findIndex(t=>t.start===1024&&t.frames===1);
+  if(tile<0)throw Error('Atlas row-boundary tile missing');
+  const data=emptyMesh();
+  appendElement(data,{from:[0,0,1],to:[5,4,1],faces:{south:{tile,uv:[0,0,80,64]}}},[0,0,0],{rotation:[0,0,0],emissive:1,tint:[1,1,1]});
+  const mesh=assets.mesh(data),info=mesh.geometry.getAttribute('tileInfo'),scene=new Scene();scene.add(mesh);
+  const renderer=new WebGLRenderer({antialias:false}),target=new WebGLRenderTarget(960,720),pixels=new Uint8Array(960*720*4);
+  const camera=new PerspectiveCamera(70,960/720,.05,100);renderer.setRenderTarget(target);
+  let checks=0;
+  for(const start of [1023,1024,1025])for(const frames of [1,3]) {
+    paint.fillStyle='red';paint.fillRect(0,0,size,size);paint.fillStyle='blue';
+    for(let frame=0;frame<frames;frame++)paint.fillRect((start+frame)%columns*cell,Math.floor((start+frame)/columns)*cell,cell,cell);
+    texture.needsUpdate=true;
+    for(let i=0;i<info.count;i++)info.setXYZ(i,start,frames,1);info.needsUpdate=true;
+    for(const time of [0,10.15])for(const distance of [1.5,15]) {
+      assets.time.value=time;camera.position.set(1.5,1.5,distance);camera.lookAt(2.5,1.5,1);
+      renderer.render(scene,camera);renderer.readRenderTargetPixels(target,0,0,960,720,pixels);
+      let blue=0,red=0;for(let i=0;i<pixels.length;i+=4){if(pixels[i]>0)red++;if(pixels[i+2]>0)blue++;}
+      if(red||blue<100)throw Error(`Wrong tile: start=${start}, frames=${frames}, time=${time}, distance=${distance}, red=${red}, blue=${blue}`);
+      checks++;
+    }
+  }
+  // Readback is linear: native display-space red 0.3 at full light must be ~18/255,
+  // rather than 76/255 from applying the tint directly to a linear texture.
+  paint.fillStyle='white';paint.fillRect(0,0,size,size);texture.needsUpdate=true;
+  const colors=mesh.geometry.getAttribute('color'),light=mesh.geometry.getAttribute('lightLevel'),glow=mesh.geometry.getAttribute('glow');
+  for(let i=0;i<colors.count;i++)colors.setXYZ(i,.3,0,0);colors.needsUpdate=true;assets.gamma.value=0;
+  camera.position.set(1.5,1.5,3);camera.lookAt(2.5,1.5,1);renderer.render(scene,camera);renderer.readRenderTargetPixels(target,0,0,960,720,pixels);
+  let red=0;for(let i=0;i<pixels.length;i+=4)red=Math.max(red,pixels[i]);
+  if(red<17||red>19)throw Error(`Incorrect tint/color space: ${red}`);checks++;
+  for(let i=0;i<colors.count;i++){colors.setXYZ(i,1,1,1);glow.setX(i,0);}colors.needsUpdate=glow.needsUpdate=true;
+  function brightness(day,gamma,sky,torch) {
+    assets.daylight.value=day;assets.gamma.value=gamma;
+    for(let i=0;i<light.count;i++)light.setXY(i,sky,torch);light.needsUpdate=true;
+    renderer.render(scene,camera);renderer.readRenderTargetPixels(target,0,0,960,720,pixels);
+    const rgb=[0,0,0];for(let i=0;i<pixels.length;i+=4)for(let channel=0;channel<3;channel++)rgb[channel]=Math.max(rgb[channel],pixels[i+channel]);checks++;return rgb;
+  }
+  const cave=brightness(.08,0,0,0),bright=brightness(.08,1,0,0),day=brightness(1,0,1,0),night=brightness(.08,0,1,0),torch=brightness(.08,0,0,7/15);
+  if(!(bright[0]>cave[0]&&day[2]>night[2]&&torch[0]>torch[1]&&torch[1]>torch[2]))throw Error(`Incorrect Gamma/sky/torch light: ${JSON.stringify({cave,bright,day,night,torch})}`);
+  mesh.geometry.dispose();texture.dispose();target.dispose();renderer.dispose();
+  document.querySelector('#result').textContent=`PASS: ${checks} GPU checks (atlas, native tint, Gamma, day/night and warm torch light)`;
+} catch(error) {
+  document.querySelector('#result').textContent=`FAIL: ${error.message}`;
+  throw error;
+}
+</script>
+</html>

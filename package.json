@@ -1,0 +1,26 @@
+{
+  "name": "minecraft-nostalgia-space",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "assets": "tsx scripts/prepare.ts",
+    "test": "tsx tests/check.ts"
+  },
+  "dependencies": {
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.180.0",
+    "fflate": "^0.8.2",
+    "minecraft-data": "^3.100.0",
+    "prismarine-nbt": "^2.7.0",
+    "sharp": "^0.35.5",
+    "tsx": "^4.20.5",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.7"
+  }
+}

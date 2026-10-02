@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#262626" />
+  <meta name="description" content="Minecraft Console Editionのワールドを探索する3Dビューア。" />
+  <title>Minecraft Worlds</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+</head>
+<body>
+  <canvas id="world" tabindex="-1" aria-label="3Dワールド"></canvas>
+  <div id="menus">
+    <main id="map-menu" class="panel">
+      <h1>ワールド選択</h1>
+      <div id="maps" class="map-list" aria-label="ワールド">
+        <button data-world="tutorial" class="map selected" aria-pressed="true"><img src="/generated/tutorial-icon.png" alt="" /><span>Tutorial World<small>TU14 · Default</small></span></button>
+        <button data-world="mario" class="map" aria-pressed="false"><img src="/generated/mario-icon.png" alt="" /><span>Super Mario<small>Mash-up</small></span></button>
+        <button data-world="festive" class="map" aria-pressed="false"><img src="/generated/festive-icon.png" alt="" /><span>Festive<small>Mash-up</small></span></button>
+        <button data-world="halloween" class="map" aria-pressed="false"><img src="/generated/halloween-icon.png" alt="" /><span>Halloween<small>Mash-up</small></span></button>
+        <button data-world="chinese" class="map" aria-pressed="false"><img src="/generated/chinese-icon.png" alt="" /><span>Chinese Mythology<small>Mash-up</small></span></button>
+      </div>
+      <p id="loading" role="status" aria-live="polite">素材を読み込み中…</p>
+      <div class="actions"><button id="enter" disabled>プレイ</button><button id="map-settings">設定</button></div>
+      <p class="controls">WASD 移動 · Space ジャンプ · Ctrl ダッシュ · Shift スニーク<br />F5 / V 視点 · E / 右クリック ドア · Esc メニュー<br />Space 2回で飛行 · 飛行中はSpace / Shiftで上下</p>
+    </main>
+    <section id="pause-menu" class="panel compact" hidden>
+      <h1>ゲームメニュー</h1>
+      <button id="resume">ゲームに戻る</button>
+      <button id="pause-settings">設定</button>
+      <button id="respawn">スポーン地点に戻る</button>
+      <button id="change-map">ワールド選択</button>
+    </section>
+    <section id="settings-menu" class="panel settings" hidden>
+      <h1>設定</h1>
+      <div class="settings-grid">
+        <label>表示<select id="legacy"><option value="true">Legacy Console</option><option value="false">Java</option></select></label>
+        <label>Gamma <output id="gamma-value">50%</output><input id="gamma" type="range" min="0" max="100" value="50" /></label>
+        <label>視野角 <output id="fov-value">70</output><input id="fov" type="range" min="40" max="110" value="70" /></label>
+        <label>描画距離 <output id="view-value">6 chunks</output><input id="view" type="range" min="3" max="12" value="6" /></label>
+        <label>描画解像度<select id="resolution"><option value="720">720p</option><option value="480">480p</option><option value="0">画面と同じ</option></select></label>
+        <label>マウス感度 <output id="sensitivity-value">100%</output><input id="sensitivity" type="range" min="20" max="200" value="100" /></label>
+        <label>BGM <output id="volume-value">50%</output><input id="volume" type="range" min="0" max="100" value="50" /></label>
+        <label>効果音 <output id="effects-value">70%</output><input id="effects" type="range" min="0" max="100" value="70" /></label>
+        <label class="check"><input id="mipmap" type="checkbox" checked /> ミップマップ</label>
+        <label class="check"><input id="viewBobbing" type="checkbox" /> 視点の揺れ</label>
+        <label class="check"><input id="clouds" type="checkbox" checked /> 雲</label>
+      </div>
+      <fieldset><legend>昼夜</legend>
+        <label>時刻 <output id="time-value">12:00</output><input id="time" type="range" min="0" max="23999" step="100" value="6000" /></label>
+        <div class="time-presets"><button data-time="0">朝</button><button data-time="6000">昼</button><button data-time="12000">夕方</button><button data-time="18000">夜</button></div>
+        <label class="check"><input id="cycle" type="checkbox" checked /> 昼夜サイクル</label>
+        <label>1日の長さ <output id="minutes-value">20分</output><input id="minutes" type="range" min="1" max="60" value="20" /></label>
+      </fieldset>
+      <div class="actions"><button id="settings-back">完了</button><button id="reset-settings">初期設定</button></div>
+    </section>
+    <div id="error" role="alert" hidden></div>
+  </div>
+  <div id="hud" hidden aria-hidden="true"><div class="crosshair"></div><div id="hotbar"></div><div id="debug" hidden></div><div id="water-overlay"></div></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
