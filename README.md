@@ -67,7 +67,9 @@ Entityのテクスチャは面ごとの領域を切り出してからアトラ�
 
 `src/core/Movement.ts`が移動、`Player.ts`が入力と視点、`src/world/Sky.ts`が昼夜、`src/minecraft/WorldLoader.ts`がチャンクの取得・解放・ドアを担当します。`?debug`を付けるとローカル確認用の`window.memorySpace`が使えます。
 
-これは探索ビューアです。ブロックの設置・破壊、インベントリ、回路、Mob、ダメージや天候は実装していません。液体はブロック単位の形状です。複数Biomeの色、Block Entityの模様やSignの文字など、Minecraft本体の全描画仕様との完全一致は対象外で、未対応モデルは生成Manifestの`unsupported`に記録します。
+水・溶岩は保存された水位と隣接ブロックから角の高さを加重平均し、流れの勾配に沿ってFlowテクスチャを回転させます。湖にはStill、滝の側面にはFlowを使い、同じ液体の内部面は出力しません。Waterloggedにも対応し、泳ぎと水中表示は液面の高さを参照します。柵の接続状態を隣接ブロックから復元し、木製／ネザーレンガの区別、接続を受け付けないブロック、ゲートの向きを反映します。柵の衝突箱は本家の1.5ブロックの高さを使います。Mojang公式1.21.6のLiquidBlockRenderer、FlowingFluid、FenceBlock、FenceGateBlockと同梱のnative衝突データで確認しています。
+
+これは探索ビューアです。ブロックの設置・破壊、インベントリ、回路、Mob、ダメージや天候は実装していません。液体の形状と流れる向きは元ワールドの状態から復元し、ワールドを変更する液体の広がりのシミュレーションは行いません。複数Biomeの色、Block Entityの模様やSignの文字など、Minecraft本体の全描画仕様との完全一致は対象外で、未対応モデルは生成Manifestの`unsupported`に記録します。
 
 素材・URL・チェックサムは提供されたファイルを使用します。Default BGMはMinecraft公式1.13 Asset Indexの`music/game/calm1.ogg`。キーボード操作は[Minecraft公式の操作ガイド](https://www.minecraft.net/article/minecraft-controls)と[Educationのキー一覧](https://edusupport.minecraft.net/hc/en-us/articles/360047116832-Minecraft-keyboard-and-mouse-controls)に合わせています。
 

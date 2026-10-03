@@ -68,6 +68,7 @@ for(const theme of ['tutorial','mario','festive','halloween','chinese'] as const
   for(const [key,lower] of oldDoors){if(lower.Properties?.half!=='lower')continue;const [x,y,z]=key.split(',').map(Number),upper=oldDoors.get(`${x},${y+1},${z}`);if(!upper||upper.Name!==lower.Name)continue;
     const pair=doorHalves(lower,upper);for(const [dy,state] of pair.entries())voxels.set(x,y+dy,z,await packs.block(pack,state));
   }
+  console.log(`  Reconnected ${await packs.connectFences(voxels)} fence blocks`);
   for await(const {root} of readChunks(world.files,bounds,'entities'))collect(root);
   const paintings=new Map<string,Awaited<ReturnType<Packs['painting']>>[]>();let paintingCount=0;
   for(const e of paintingEntities.values()){

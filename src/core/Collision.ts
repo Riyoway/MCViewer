@@ -8,7 +8,7 @@ export class Collision {
   loaded=(x:number,z:number)=>true;
   constructor(readonly voxels:Voxels,readonly blocks:Block[]) {}
   private each(min:Vec3,max:Vec3,fn:(a:Vec3,b:Vec3)=>void) {
-    for(let y=Math.floor(min[1]);y<=Math.floor(max[1]);y++) for(let z=Math.floor(min[2]);z<=Math.floor(max[2]);z++) for(let x=Math.floor(min[0]);x<=Math.floor(max[0]);x++) {
+    for(let y=Math.floor(min[1]) - 1;y<=Math.floor(max[1]);y++) for(let z=Math.floor(min[2]);z<=Math.floor(max[2]);z++) for(let x=Math.floor(min[0]);x<=Math.floor(max[0]);x++) {
       const block=this.blocks[this.voxels.get(x,y,z)];if(!block?.solid)continue;
       // Axis-aligned stair/slab/fence collision boxes from the pack's block model.
       for(const box of block.collision) {

@@ -1,5 +1,6 @@
 import type { Vec3 } from '../minecraft/types';
 import { Collision } from './Collision';
+import { fluidHeight } from '../minecraft/Fluid';
 
 export class Movement {
   readonly position:Vec3=[0,80,0];vx=0;vz=0;vy=0;grounded=false;flying=false;swimming=false;
@@ -9,7 +10,7 @@ export class Movement {
   tick(forward:number,strafe:number,yaw:number,jump:boolean,sprint:boolean,sneak:boolean) {
     if(!this.collision.loaded(this.position[0],this.position[2]))return;
     const blockAt=(y:number)=>this.collision.blocks[this.collision.voxels.get(Math.floor(this.position[0]),Math.floor(y),Math.floor(this.position[2]))];
-    this.swimming=!this.flying&&[.01,.9,1.79].some(y=>blockAt(this.position[1]+y)?.name==='water');
+    this.swimming=!this.flying&&[.01,.9,1.79].some(offset=>{const y=this.position[1]+offset;return y-Math.floor(y)<fluidHeight(blockAt(y),blockAt(Math.floor(y)+1),'water');});
     const running=sprint&&forward>0&&!sneak,ground=blockAt(this.position[1]-.01);
     const friction=this.grounded&&!this.flying?(ground?.name==='blue_ice'?.989:/ice/.test(ground?.name??'')?.98:ground?.name==='slime_block'?.8:.6):1;
     const drag=this.swimming?.8:friction*.91;

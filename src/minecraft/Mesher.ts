@@ -1,10 +1,68 @@
 import { CHUNK, Voxels } from './Voxels';
 import { FACES } from './types';
 import type { Block, MeshData, Vec3, Element } from './types';
+import { fluidKind, fluidHeight, fluidFlow } from './Fluid';
 
 export const emptyMesh = (): MeshData => ({ position: [], normal: [], uv: [], tile: [], color: [], glow: [], light: [], index: [] });
 const directions: Vec3[] = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
 const shades = [0.6, 0.6, 1, 0.5, 0.8, 0.8];
+
+// Check the union of face rectangles, including the two boxes of a stair.
+export function coversFace(boxes:Block['collision'],face:number,height=1):boolean {
+  const axis=Math.floor(face/2),a=(axis+1)%3,b=(axis+2)%3,edge=face%2===0?1:0;
+  const A=a===1?height:1,B=b===1?height:1;
+  const rects=boxes.filter(box=>Math.abs((face%2===0?box.to:box.from)[axis]-edge)<1e-6);
+  if(!rects.length)return false;
+  const cuts=(d:number,max:number)=>[...new Set([0,max,...rects.flatMap(r=>[r.from[d],r.to[d]]).filter(v=>v>0&&v<max)])].sort((x,y)=>x-y);
+  const u=cuts(a,A),v=cuts(b,B);
+  for(let i=1;i<u.length;i++)for(let j=1;j<v.length;j++) {
+    const x=(u[i-1]+u[i])/2,y=(v[j-1]+v[j])/2;
+    if(!rects.some(r=>r.from[a]<=x&&r.to[a]>=x&&r.from[b]<=y&&r.to[b]>=y))return false;
+  }
+  return true;
+}
+
+// LiquidBlockRenderer: weighted corner heights, flow UVs and same-fluid culling.
+function appendFluid(mesh:MeshData,p:Vec3,block:Block,sample:(x:number,y:number,z:number)=>Block|undefined,lighting:(x:number,y:number,z:number)=>number) {
+  const kind=fluidKind(block)!,tiles=block.fluidTiles??[block.tiles[2],block.tiles[2]],own=fluidHeight(block,sample(p[0],p[1]+1,p[2]),kind);
+  const height=(dx:number,dz:number)=>{const b=sample(p[0]+dx,p[1],p[2]+dz);return fluidKind(b)===kind?fluidHeight(b,sample(p[0]+dx,p[1]+1,p[2]+dz),kind):b?.solid?-1:0;};
+  const north=height(0,-1),south=height(0,1),east=height(1,0),west=height(-1,0);
+  const corner=(a:number,b:number,dx:number,dz:number)=>{
+    if(own>=1||a>=1||b>=1)return 1;
+    const levels=[own,a,b];if(a>0||b>0){const diagonal=height(dx,dz);if(diagonal>=1)return 1;levels.push(diagonal);}
+    let sum=0,weight=0;for(const h of levels)if(h>=0){const w=h>=.8?10:1;sum+=h*w;weight+=w;}return sum/weight;
+  };
+  // Same order as faceCorners(up): SW, SE, NE, NW.
+  const heights=[corner(south,west,-1,1),corner(south,east,1,1),corner(north,east,1,-1),corner(north,west,-1,-1)];
+  const value=lighting(...p),above=lighting(p[0],p[1]+1,p[2]),light=[Math.max(value>>4,above>>4)/15,Math.max(value&15,above&15)/15];
+  const occluded=(b:Block|undefined,face:number,h:number)=>!!b?.solid&&!b.transparent&&!b.name.endsWith('_leaves')&&coversFace(b.collision,face,h);
+  const emit=(face:number,corners:Vec3[],uv:number[],tile:number,back=false)=>{
+    const offset=mesh.position.length/3;
+    quad(mesh,corners,directions[face],uv,tile,(kind==='water'?(block.fluid?block.tint:[.29,.55,.95]):[1,1,1]).map(n=>n*shades[face]),block.emissive,light);
+    if(back)mesh.index.push(offset+2,offset+1,offset,offset+3,offset+2,offset);
+  };
+  const upper=sample(p[0],p[1]+1,p[2]);
+  const top=fluidKind(upper)!==kind&&!occluded(block,2,1)&&!(Math.min(...heights)>=1&&occluded(upper,3,1));
+  const lower=sample(p[0],p[1]-1,p[2]),bottom=fluidKind(lower)!==kind&&!occluded(block,3,1)&&!occluded(lower,2,1);
+  const surface=heights.map(h=>h-(top?.001:0)),base=bottom?.001:0;
+  if(top) {
+    const [fx,,fz]=fluidFlow(sample,p,kind),moving=fx!==0||fz!==0;
+    const angle=Math.atan2(fz,fx)-Math.PI/2,s=Math.sin(angle)*.25,c=Math.cos(angle)*.25;
+    const uv=moving?[.5-c+s,.5-c-s,.5+c+s,.5-c+s,.5+c-s,.5+c+s,.5-c-s,.5+c-s]:[0,0,1,0,1,1,0,1];
+    const corners=faceCorners(p,[p[0]+1,p[1]+1,p[2]+1],2);corners.forEach((v,i)=>v[1]=p[1]+surface[i]);
+    emit(2,corners,uv,tiles[moving?1:0],true);
+  }
+  if(bottom)emit(3,faceCorners([p[0],p[1]+.001,p[2]],[p[0]+1,p[1]+1,p[2]+1],3),[0,0,1,0,1,1,0,1],tiles[0]);
+  for(const face of [0,1,4,5]) {
+    const dir=directions[face],neighbor=sample(p[0]+dir[0],p[1],p[2]+dir[2]);
+    const indices=({0:[1,2],1:[3,0],4:[0,1],5:[2,3]} as Record<number,number[]>)[face],h=indices.map(i=>surface[i]);
+    if(fluidKind(neighbor)===kind||occluded(block,face,1)||occluded(neighbor,face^1,Math.max(...h)))continue;
+    const corners=faceCorners(p,[p[0]+1,p[1]+1,p[2]+1],face);
+    corners.forEach((v,i)=>{v[Math.floor(face/2)]-=dir[Math.floor(face/2)]*.001;v[1]=p[1]+(i<2?base:h[i===2?1:0]);});
+    const overlay=kind==='water'&&(neighbor?.transparent||neighbor?.name.endsWith('_leaves'))&&tiles[2]!==undefined;
+    emit(face,corners,[0,.5,.5,.5,.5,.5+h[1]*.5,0,.5+h[0]*.5],tiles[overlay?2:1],!overlay);
+  }
+}
 
 function quad(mesh: MeshData, corners: Vec3[], normal: Vec3, uv: number[], tile: number, tint: number[], glow: number, light=[1,0], ao=[3,3,3,3]) {
   const offset = mesh.position.length / 3;
@@ -92,7 +150,7 @@ export function meshChunk(voxels: Voxels, blocks: Block[], origin: Vec3, lightin
         const p:Vec3=[0,0,0];p[axis]=slice;p[a]=i;p[b]=j;
         const id=sample(...p),block=blocks[id],q:Vec3=[p[0]+dir[0],p[1]+dir[1],p[2]+dir[2]];
         const neighborId=sample(...q),neighbor=blocks[neighborId],cell=j*CHUNK+i;
-        mask[cell]=block?.cube&&(!neighbor||!neighbor.occludes&&(!block.transparent||neighborId!==id))?id:0;
+        mask[cell]=block?.cube&&!block.fluid&&(!neighbor||!neighbor.occludes&&(!block.transparent||neighborId!==id))?id:0;
         if(!mask[cell])continue;
         const centerLight=level(q);let packed=0,packedSky=0,packedBlock=0;
         const corners=faceCorners([0,0,0],[1,1,1],face);
@@ -137,7 +195,9 @@ export function meshChunk(voxels: Voxels, blocks: Block[], origin: Vec3, lightin
   if(full)return {opaque,transparent};
   for (let y=0;y<CHUNK;y++) for (let z=0;z<CHUNK;z++) for (let x=0;x<CHUNK;x++) {
     const p: Vec3 = [origin[0]+x,origin[1]+y,origin[2]+z], block=blocks[sample(x,y,z)];
-    if (!block || block.cube||dynamicDoors&&/door$/.test(block.name)) continue;
+    if (!block)continue;
+    if(fluidKind(block))appendFluid(block.name==='lava'?opaque:transparent,p,block,(X,Y,Z)=>blocks[sample(X-origin[0],Y-origin[1],Z-origin[2])],lighting);
+    if (block.fluid||block.cube||dynamicDoors&&/door$/.test(block.name)) continue;
     for (const element of block.elements) appendElement(block.transparent ? transparent : opaque,element,p,block,voxels,blocks,lighting);
   }
   return { opaque, transparent };

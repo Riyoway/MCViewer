@@ -2,7 +2,8 @@ import { readFile, access } from 'node:fs/promises';
 import minecraftData from 'minecraft-data';
 import sharp from 'sharp';
 import { FACES } from '../src/minecraft/types.ts';
-import { faceCorners, appendElement, emptyMesh } from '../src/minecraft/Mesher.ts';
+import { faceCorners, appendElement, emptyMesh, coversFace } from '../src/minecraft/Mesher.ts';
+import { Voxels } from '../src/minecraft/Voxels.ts';
 import type { Block, Element, Tile, Vec3 } from '../src/minecraft/types.ts';
 import { stateKey } from './anvil.ts';
 import type { State } from './anvil.ts';
@@ -10,7 +11,7 @@ import type { State } from './anvil.ts';
 const reference='minecraft-memory-assets/references/native-data';
 const models=JSON.parse(await readFile(`${reference}/1.21.6/blocks_models.json`,'utf8'));
 const states=JSON.parse(await readFile(`${reference}/1.21.6/blocks_states.json`,'utf8'));
-const blockData=minecraftData('1.21.6').blocksByName;
+const nativeData=minecraftData('1.21.6'),blockData=nativeData.blocksByName;
 const exists = async (path: string) => { try { await access(path); return true; } catch { return false; } };
 const facesDefault = (f: string, a: number[], b: number[]): number[] => {
   if(f==='down')return [a[0],16-b[2],b[0],16-a[2]];
@@ -218,8 +219,11 @@ export class Packs {
         elements.push(element);
       }
     }
+    const fluidLevel=fluid?Number(props.level??0):props.waterlogged==='true'?0:undefined;
+    if(fluidLevel!==undefined&&(!Number.isInteger(fluidLevel)||fluidLevel<0||fluidLevel>15))throw new Error(`Invalid fluid level: ${key}`);
+    const fluidTiles=fluidLevel===undefined?undefined:await Promise.all([`${fluid?name:'water'}_still`,`${fluid?name:'water'}_flow`,...(name==='lava'?[]:['water_overlay'])].map(t=>this.tile(theme,t)));
     if(fluid) {
-      const tile=await this.tile(theme,`${name}_still`);
+      const tile=fluidTiles![0];
       elements.push({from:[0,0,0],to:[1,1,1],faces:Object.fromEntries(FACES.map(f=>[f,{tile,uv:[0,0,16,16],tint:name==='water'}]))});
     }
     if(!elements.length) {elements.push(...await this.entityElements(theme,name,props));if(elements.length)this.unsupported.delete(key);else {this.unsupported.add(key);return 0;}}
@@ -243,7 +247,7 @@ export class Packs {
       elements.splice(1);
     }
     let cube=elements.length===1 && !elements[0].rotation && elements[0].from.every(n=>n===0) && elements[0].to.every(n=>n===1) && FACES.every(f=>elements[0].faces[f]);
-    if(rotation.some(n=>n%90!==0)) cube=false;
+    if(fluid||rotation.some(n=>n%90!==0)) cube=false;
     const transparent=name==='water'||/glass/.test(name)||['ice','frosted_ice','slime_block','honey_block'].includes(name);
     const solid=!fluid && blockData[name]?.boundingBox!=='empty';
     const power=Number(props.power??0)/15;
@@ -270,15 +274,44 @@ export class Packs {
     }
     const light=props.lit==='false'?0:props.lit==='true'&&name==='redstone_lamp'?15:props.lit==='true'&&/furnace$|^smoker$/.test(name)?13:data?.emitLight??0;
     const emissive=/glowstone|sea_lantern|jack_o_lantern|lava|fire/.test(name)?1:0;
-    const collision=solid?elements.filter(e=>e.from.every((n,i)=>n<e.to[i])).map(e=>{
+    let collision=solid?elements.filter(e=>e.from.every((n,i)=>n<e.to[i])).map(e=>{
       const mesh=emptyMesh();appendElement(mesh,e,[0,0,0],{rotation,tint,emissive} as Block);
       return {from:[0,1,2].map(i=>Math.min(...mesh.position.filter((_,n)=>n%3===i))) as Vec3,to:[0,1,2].map(i=>Math.max(...mesh.position.filter((_,n)=>n%3===i))) as Vec3};
     }):[];
-    const block:Block={name,theme,solid,cube,occludes:cube&&solid&&!transparent&&!data?.transparent,transparent,fluid,emissive,tiles,uvRotations,tinted,tint,elements,rotation,collision,opacity:cube?(data?.filterLight??0):props.waterlogged==='true'?1:0,light,state:stateKey({Name:state.Name,Properties:props})};
+    let stateIndex=0;
+    for(const property of data?.states??[]) {const value=property.type==='bool'?(props[property.name]==='true'?0:1):property.values?property.values.indexOf(props[property.name]):Number(props[property.name]);stateIndex=stateIndex*property.num_values+value;}
+    const shapes=nativeData.blockCollisionShapes,shapeIds=shapes.blocks[name],shape=shapes.shapes[Array.isArray(shapeIds)?shapeIds[stateIndex]:shapeIds]??[];
+    const nativeBoxes=shape.map((b:number[])=>({from:b.slice(0,3) as Vec3,to:b.slice(3,6) as Vec3}));
+    // Fences block jumping with 1.5-high boxes; render rails stay at their model height.
+    if(/_fence$|_fence_gate$/.test(name))collision=nativeBoxes;
+    const sturdyFaces=FACES.reduce((bits,_,i)=>bits|(coversFace(nativeBoxes,i)?1<<i:0),0);
+    const block:Block={name,theme,solid,cube,occludes:cube&&solid&&!transparent&&!data?.transparent,transparent,fluid,fluidLevel,fluidTiles,sturdyFaces,emissive,tiles,uvRotations,tinted,tint,elements,rotation,collision,opacity:cube||fluid?(data?.filterLight??0):props.waterlogged==='true'?1:0,light,state:stateKey({Name:state.Name,Properties:props})};
     const id=this.blocks.length;if(id>=65536)throw new Error('Block palette exceeds 16-bit voxel storage');this.blocks.push(block);this.lookup[key]=id;
     this.lookup[`${theme}:${block.state}`]=id;
     if(/door$/.test(name))await this.block(theme,{Name:state.Name,Properties:{...props,open:props.open==='true'?'false':'true'}});
     return id;
+  }
+  async connectFences(voxels:Voxels):Promise<number> {
+    const fences=new Set(this.blocks.map((b,i)=>b?.name.endsWith('_fence')?i:0));fences.delete(0);
+    let changed=0;
+    for(const [key,cells] of voxels.chunks) {
+      const [cx,cy,cz]=key.split(',').map(n=>Number(n)*16);
+      for(let i=0;i<4096;i++)if(fences.has(cells[i])) {
+        const block=this.blocks[cells[i]],p:Vec3=[cx+(i&15),cy+(i>>8),cz+((i>>4)&15)];
+        const props=Object.fromEntries((block.state.split('[')[1]??'').replace(']','').split(',').filter(Boolean).map(s=>s.split('=')));
+        for(const [direction,dx,dz,face] of [['east',1,0,0],['west',-1,0,1],['south',0,1,4],['north',0,-1,5]] as const) {
+          const neighbor=this.blocks[voxels.get(p[0]+dx,p[1],p[2]+dz)],name=neighbor?.name??'';
+          const same=name.endsWith('_fence')&&(name==='nether_brick_fence')===(block.name==='nether_brick_fence');
+          const gate=name.endsWith('_fence_gate')&&(dx!==0?/facing=(north|south)/.test(neighbor.state):/facing=(east|west)/.test(neighbor.state));
+          const exception=/_leaves$|shulker_box$/.test(name)||['barrier','pumpkin','carved_pumpkin','jack_o_lantern','melon'].includes(name);
+          props[direction]=String(same||gate||!exception&&!!((neighbor?.sturdyFaces??0)&(1<<(face^1))));
+        }
+        const state={Name:`minecraft:${block.name}`,Properties:props};
+        if(stateKey(state)===block.state)continue;
+        cells[i]=await this.block(block.theme,state);changed++;
+      }
+    }
+    return changed;
   }
   async atlas(path:string) {
     // Power-of-two cells with a full gutter keep each mip level inside its own tile.

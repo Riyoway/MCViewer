@@ -16,12 +16,17 @@ import { legacyState, doorHalves } from '../scripts/legacy.ts';
 import { Packs } from '../scripts/pack.ts';
 import { rebuildLighting } from '../scripts/lighting.ts';
 import { World } from '../src/minecraft/WorldLoader.ts';
+import { fluidHeight, fluidFlow } from '../src/minecraft/Fluid.ts';
 import type { Manifest } from '../src/minecraft/types.ts';
 
 const manifest:Manifest=JSON.parse(await readFile('public/generated/manifest.json','utf8'));
 assert.equal(manifest.missingTextures.length,0);
 assert.equal(Object.keys(manifest.worlds).length,5,'All five maps must be playable');
 assert.equal(Object.keys(manifest.effects).length,10,'Footsteps, swimming and door sounds must ship with the maps');
+for(const block of manifest.blocks) {
+  if(block?.fluid){assert.equal(block.cube,false,'Generated liquids use the surface mesher');assert(Number.isInteger(block.fluidLevel)&&block.fluidLevel!>=0&&block.fluidLevel!<=15);assert(block.fluidTiles&&block.fluidTiles.length>=2,'Generated liquids include both Still and Flow');for(const tile of block.fluidTiles)assert(manifest.atlas.tiles[tile]);}
+  if(block?.name.endsWith('_fence'))assert.equal(Math.max(...block.collision.map(b=>b.to[1])),1.5,'Generated fences retain native collision height');
+}
 for(const file of [...Object.values(manifest.audio).filter(Boolean),...Object.values(manifest.effects).flat()])assert.equal((await readFile(`public/generated/${file}`)).subarray(0,4).toString(),'OggS');
 for(const world of Object.values(manifest.worlds)) {
   assert(world.paintings!>0,'Every map restores saved paintings');
@@ -132,6 +137,40 @@ body.position.splice(0,3,0,0,1.5);body.stop();body.grounded=true;for(let i=0;i<7
 for(let i=0;i<12;i++)body.tick(-1,0,0,false,false,false);assert.equal(body.position[1],0,'Gravity takes the player down from a slab');
 body.position.splice(0,3,0,.5,0);body.flying=true;for(let i=0;i<10;i++)body.tick(0,0,0,true,false,false);assert(body.position[1]>2);body.flying=false;
 const waterId=await packs.block('vanilla',{Name:'minecraft:water',Properties:{level:'0'}}),pool=new Voxels();pool.fill([-4,-1,-4],[20,0,4],stone);pool.fill([-4,0,-4],[0,1,4],waterId);pool.fill([0,0,-4],[20,1,4],stone);
+await assert.rejects(()=>packs.block('vanilla',{Name:'minecraft:water',Properties:{level:'16'}}),/Invalid fluid level/);
+for(const kind of ['water','lava']) {
+  const ids=await Promise.all([0,1,7,8].map(level=>packs.block('vanilla',{Name:`minecraft:${kind}`,Properties:{level:String(level)}})));
+  const fluid=packs.blocks[ids[0]],channel=new Voxels();channel.fill([0,-1,0],[4,0,1],stone);ids.forEach((id,x)=>channel.set(x,0,0,id));
+  assert.equal(fluidHeight(fluid,undefined,kind),8/9);assert.equal(fluidHeight(packs.blocks[ids[2]],undefined,kind),1/9);assert.equal(fluidHeight(fluid,fluid,kind),1);
+  const get=(x:number,y:number,z:number)=>packs.blocks[channel.get(x,y,z)];
+  assert(fluidFlow(get,[0,0,0],kind)[0]>.99,'Flow points from the source toward the shallower neighbor');
+  const data=meshChunk(channel,packs.blocks,[0,0,0])[kind==='water'?'transparent':'opaque'];
+  assert(data.position.every(Number.isFinite));
+  const tops=data.normal.map((_,i)=>i%3===1&&data.normal[i]===1?(i-1)/3:-1).filter(i=>i>=0);
+  assert(tops.some(i=>data.tile[i]===fluid.fluidTiles![1]),'Flowing tops use the native flow animation');
+  assert(new Set(tops.map(i=>data.position[i*3+1].toFixed(5))).size>2,'Liquid surfaces slope according to saved levels');
+  assert(!data.normal.some((n,i)=>i%3===0&&Math.abs(n)===1&&data.position[i]>1.99&&data.position[i]<2.01),'Different levels of the same fluid have no internal wall');
+  const lake=new Voxels();lake.fill([0,0,0],[3,1,3],ids[0]);
+  const flat=meshChunk(lake,packs.blocks,[0,0,0])[kind==='water'?'transparent':'opaque'];
+  const center=flat.tile.findIndex((tile,i)=>tile===fluid.fluidTiles![0]&&flat.normal[i*3+1]===1&&flat.position[i*3]===1&&flat.position[i*3+2]===2);
+  assert(center>=0);assert(Math.abs(flat.position[center*3+1]-(8/9-.001))<1e-6,'A still source lake sits below the block rim');
+  const drop=new Voxels();drop.set(0,0,0,ids[0]);drop.set(1,-1,0,ids[0]);assert(fluidFlow((x,y,z)=>packs.blocks[drop.get(x,y,z)],[0,0,0],kind)[0]>.99,'Flow follows a drop even when the adjacent cell is air');
+  const falling=new Voxels();falling.set(0,0,0,ids[3]);falling.set(0,1,0,ids[3]);const waterfall=meshChunk(falling,packs.blocks,[0,0,0])[kind==='water'?'transparent':'opaque'];
+  assert(waterfall.position.some((v,i)=>i%3===1&&v===1),'Stacked waterfall sides meet at the block boundary without gaps');
+}
+const unconnected=await packs.block('vanilla',{Name:'minecraft:oak_fence'}),birch=await packs.block('vanilla',{Name:'minecraft:birch_fence'}),nether=await packs.block('vanilla',{Name:'minecraft:nether_brick_fence'});
+const alignedGate=await packs.block('vanilla',{Name:'minecraft:oak_fence_gate',Properties:{facing:'north'}}),wrongGate=await packs.block('vanilla',{Name:'minecraft:oak_fence_gate',Properties:{facing:'east'}}),pumpkin=await packs.block('vanilla',{Name:'minecraft:pumpkin'});
+const railing=new Voxels();railing.set(15,0,0,unconnected);railing.set(16,0,0,birch);railing.set(14,0,0,stone);railing.set(15,0,1,nether);railing.set(15,0,-1,leaves);
+railing.set(20,0,0,unconnected);railing.set(21,0,0,alignedGate);railing.set(19,0,0,wrongGate);railing.set(20,0,1,pumpkin);
+assert((await packs.connectFences(railing))>0);
+const connected=packs.blocks[railing.get(15,0,0)],atGate=packs.blocks[railing.get(20,0,0)];
+assert(connected.state.includes('east=true')&&connected.state.includes('west=true'),'Wooden fences connect to other wood and a sturdy wall across chunk boundaries');
+assert(connected.state.includes('south=false')&&connected.state.includes('north=false'),'Wood and nether fences stay separate; leaves do not accept rails');
+assert(atGate.state.includes('east=true')&&atGate.state.includes('west=false')&&atGate.state.includes('south=false'),'Gate orientation and pumpkin exceptions match FenceBlock');
+assert(packs.blocks[railing.get(16,0,0)].state.includes('west=true'),'Both ends of a rail connect');
+const railCollision=new Collision(railing,packs.blocks);assert(railCollision.point(15.9,1.3,.5),'Native fence collision covers the connected rail up to 1.5 blocks');
+assert.equal(railCollision.overlaps(15.5,1.3,.5),true,'Collision queries include the taller fence in the cell below');
+assert.equal(await packs.connectFences(railing),0,'Connection repair is stable');
 const swimmer=new Movement(new Collision(pool,packs.blocks));swimmer.position.splice(0,3,-.5,0,.5);
 for(let i=0;i<50;i++)swimmer.tick(0,1,0,true,false,false);
 assert(swimmer.position[0]>.5&&swimmer.position[1]>=1,'Swimming into a bank supplies the native 0.3 water-exit impulse');
@@ -173,4 +212,4 @@ assert.throws(()=>unpackPalette([],17,true));assert.equal(legacyState(5,1).Name,
 const sky=new Sky({daylight:{value:0},time:{value:0}} as any),fog=new Fog('#fff');sky.time=6000;sky.cycle=false;sky.update(10,new Vector3(),fog,true,96);assert.equal(sky.time,6000);assert.equal(sky.brightness,1);
 sky.environment={sky_color:'#3d2300',fog_color:'#e4880b',sun:'',moon:'',clouds:''};sky.update(0,new Vector3(),fog,true,96);assert.equal(fog.color.getHexString(),'e4880b','Halloween keeps the pack’s original orange fog');
 sky.time=18000;sky.update(0,new Vector3(),fog,true,96);assert(sky.brightness<.1);sky.cycle=true;sky.time=0;sky.minutes=20;sky.update(1200,new Vector3(),fog,true,96);assert.equal(sky.time,0);
-console.log('Checks passed: five maps, native chest/bed/arm UVs, redstone tint, sky/torch propagation, stored light, doors, stable walking, movement/input, audio, Anvil and day/night.');
+console.log('Checks passed: five maps, fluid heights/flow/culling, fence connections/collision, native chest/bed/arm UVs, redstone tint, sky/torch propagation, stored light, doors, stable walking, movement/input, audio, Anvil and day/night.');

@@ -7,6 +7,7 @@ import { PlayerModel } from './core/PlayerModel';
 import { AudioManager } from './core/AudioManager';
 import { World } from './minecraft/WorldLoader';
 import { Sky } from './world/Sky';
+import { fluidHeight } from './minecraft/Fluid';
 
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world'),enter=$<HTMLButtonElement>('enter'),loading=$('loading'),error=$('error');
@@ -99,7 +100,8 @@ async function init() {
     sky.update(player?.locked?dt:0,camera.position,fog,config.legacy,config.view*16);
     if(player&&world){const light=world.light(...player.eye.toArray());assets.entityLight.value.set((light>>4)/15,(light&15)/15);}
     const underwater=!!player&&world?.voxels.get(Math.floor(camera.position.x),Math.floor(camera.position.y),Math.floor(camera.position.z));
-    const inWater=!!underwater&&assets.manifest.blocks[underwater]?.name==='water';document.body.classList.toggle('underwater',inWater);
+    const aboveWater=world?.voxels.get(Math.floor(camera.position.x),Math.floor(camera.position.y)+1,Math.floor(camera.position.z));
+    const inWater=!!underwater&&camera.position.y-Math.floor(camera.position.y)<fluidHeight(assets.manifest.blocks[underwater],assets.manifest.blocks[aboveWater??0],'water');document.body.classList.toggle('underwater',inWater);
     if(inWater){fog.color.set(sky.environment?.water_fog_color??'#20417b');fog.near=0;fog.far=sky.environment?.water_fog_distance??24;}
     renderer.render(scene,camera);frames++;fpsTime+=dt;if(fpsTime>1){fps=Math.round(frames/fpsTime);frames=0;fpsTime=0;}
     if(ui==='settings-menu'){$<HTMLInputElement>('time').value=String(sky.time);updateTime();}

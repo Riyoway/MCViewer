@@ -18,6 +18,9 @@ export interface Block {
   occludes: boolean;
   transparent: boolean;
   fluid: boolean;
+  fluidLevel?: number;
+  fluidTiles?: number[];
+  sturdyFaces?: number;
   emissive: number;
   tiles: number[];
   uvRotations: number[];
