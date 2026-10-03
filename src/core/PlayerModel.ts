@@ -16,6 +16,7 @@ export class PlayerModel {
   readonly leftArm=new Group(); readonly rightArm=new Group();
   readonly leftLeg=new Group(); readonly rightLeg=new Group();
   readonly hand=new Group();
+  private swingTime=.3;
   private phase=0; private amount=0; private bodyYaw=0; private upperYaw=0;
   static async create(assets:AssetManager) {
     const texture=await new TextureLoader().loadAsync(assetUrl('steve.png'));
@@ -48,7 +49,12 @@ export class PlayerModel {
     model.head.position.z=-.025;
     return model;
   }
+  swing(){if(this.swingTime>=.15)this.swingTime=0;}
   update(dt:number,yaw:number,pitch:number,forward:number,strafe:number,speed:number,reducedMotion:boolean) {
+    this.swingTime=Math.min(.3,this.swingTime+dt);
+    const attack=this.swingTime/.3,arc=attack<1?Math.sin(Math.sqrt(attack)*Math.PI):0,twist=attack<1?Math.sin(attack*attack*Math.PI):0;
+    this.hand.position.set(.64-.3*arc,-.6+(attack<1?.4*Math.sin(Math.sqrt(attack)*2*Math.PI):0),-.72-(attack<1?.4*Math.sin(attack*Math.PI):0));
+    this.hand.quaternion.setFromRotationMatrix(new Matrix4().makeRotationY((45+70*arc)*Math.PI/180).multiply(new Matrix4().makeRotationZ(-20*twist*Math.PI/180)));
     const ease=1-Math.exp(-dt*12),turn=(target:number,current:number)=>Math.atan2(Math.sin(target-current),Math.cos(target-current));
     const delta=turn(yaw,this.bodyYaw);
     this.bodyYaw+=Math.max(-.8,Math.min(.8,delta))*ease;
@@ -63,11 +69,12 @@ export class PlayerModel {
     const stride=Math.sin(this.phase)*this.amount;
     const f=forward, s=strafe;
     for(const [part,sign,arm] of [[this.leftLeg,1,false],[this.rightLeg,-1,false],[this.leftArm,-1,true],[this.rightArm,1,true]] as const) {
-      const target=stride*sign*(arm?.48:.58)*f;
+      const target=stride*sign*(arm?.48:.58)*f-(part===this.rightArm&&attack<1?Math.sin(attack*Math.PI)*1.2:0);
       part.rotation.x+=(target-part.rotation.x)*ease;
       part.rotation.z+=(-stride*sign*(arm?.22:.38)*s-part.rotation.z)*ease;
     }
     const bob=reducedMotion?0:(1-Math.cos(this.phase*2))*.008*this.amount;
+    this.rightArm.rotation.y=-arc*.4;
     this.upper.position.y=.75+bob;this.root.rotation.z=reducedMotion?0:Math.sin(this.phase)*.009*this.amount;
     return {vertical:bob,side:reducedMotion?0:Math.sin(this.phase)*.008*this.amount};
   }

@@ -7,7 +7,7 @@ import type { Block, Element, Tile, Vec3 } from '../src/minecraft/types.ts';
 import { stateKey } from './anvil.ts';
 import type { State } from './anvil.ts';
 
-const reference='minecraft-memory-assets/references/minecraft-assets/data';
+const reference='minecraft-memory-assets/references/native-data';
 const models=JSON.parse(await readFile(`${reference}/1.21.6/blocks_models.json`,'utf8'));
 const states=JSON.parse(await readFile(`${reference}/1.21.6/blocks_states.json`,'utf8'));
 const blockData=minecraftData('1.21.6').blocksByName;
@@ -68,7 +68,7 @@ export class Packs {
   }
   async tile(theme: string, texture: string, region?: number[]): Promise<number> {
     texture=texture.replace('minecraft:','').replace(/^block\//,'');
-    const entity=texture.startsWith('entity/'),texturePath=entity?texture:`block/${texture}`,referencePath=entity?texture:`blocks/${texture}`;
+    const entity=texture.startsWith('entity/')||texture.startsWith('painting/'),texturePath=entity?texture:`block/${texture}`,referencePath=entity?texture:`blocks/${texture}`;
     const key=`${theme}:${texture}${region?':'+region.join(','):''}`;
     if(this.tileCache.has(key)) return this.tileCache.get(key)!;
     let path='';
@@ -113,6 +113,25 @@ export class Packs {
       this.images.push(resized.get(frame)!);
     }
     return id;
+  }
+  async painting(theme:string,entity:any):Promise<{position:Vec3;elements:Element[];rotation:Vec3}> {
+    await this.init(theme);
+    const name=String(entity.variant??entity.Motive??'').replace('minecraft:','').replace(/([a-z])([A-Z])/g,'$1_$2').toLowerCase();
+    if(!/^[a-z0-9_]+$/.test(name))throw new Error('Invalid painting variant');
+    const position=entity.Pos as Vec3;
+    if(!Array.isArray(position)||position.length!==3||!position.every(Number.isFinite))throw new Error('Invalid painting position');
+    const meta=await sharp(`${reference}/1.21.6/painting/${name}.png`).metadata(),width=meta.width!/16,height=meta.height!/16;
+    if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||width>8||height>8)throw new Error(`Invalid painting size: ${name}`);
+    const facing=entity.facing??entity.Facing??0;
+    if(!Number.isInteger(facing)||facing<0||facing>3)throw new Error('Invalid painting facing');
+    const elements:Element[]=[],back=await this.tile(theme,'painting/back');
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+      const front=await this.tile(theme,`painting/${name}`,[x*16/width,y*16/height,(x+1)*16/width,(y+1)*16/height]);
+      const faces:Element['faces']={south:{tile:front,uv:[0,0,16,16]},north:{tile:back,uv:[0,0,16,16]}};
+      for(const face of ['east','west','up','down'] as const)if(face==='east'&&x===width-1||face==='west'&&x===0||face==='up'&&y===0||face==='down'&&y===height-1)faces[face]={tile:back,uv:face==='up'||face==='down'?[0,0,16,1]:[0,0,1,16]};
+      elements.push({from:[x-width/2,height/2-y-1,-1/32],to:[x+1-width/2,height/2-y,1/32],faces});
+    }
+    return {position,elements:elements.map(e=>({...e,rotation:{origin:[0,0,0],axis:'y',angle:-facing*90}})),rotation:[0,0,0]};
   }
   private async entityElements(theme:string,name:string,props:Record<string,string>):Promise<Element[]> {
     let texture='',size=64,boxes:{from:Vec3;to:Vec3;u:number;v:number;rotation?:Element['rotation'];transform?:Vec3;bedBody?:boolean}[]=[],angle=({north:0,east:90,south:180,west:270} as Record<string,number>)[props.facing]??0;
@@ -255,7 +274,7 @@ export class Packs {
       const mesh=emptyMesh();appendElement(mesh,e,[0,0,0],{rotation,tint,emissive} as Block);
       return {from:[0,1,2].map(i=>Math.min(...mesh.position.filter((_,n)=>n%3===i))) as Vec3,to:[0,1,2].map(i=>Math.max(...mesh.position.filter((_,n)=>n%3===i))) as Vec3};
     }):[];
-    const block:Block={name,theme,solid,cube,occludes:cube&&solid&&!transparent&&!data?.transparent,transparent,fluid,emissive,tiles,uvRotations,tinted,tint,elements,rotation,collision,opacity:data?.filterLight??0,light,state:stateKey({Name:state.Name,Properties:props})};
+    const block:Block={name,theme,solid,cube,occludes:cube&&solid&&!transparent&&!data?.transparent,transparent,fluid,emissive,tiles,uvRotations,tinted,tint,elements,rotation,collision,opacity:cube?(data?.filterLight??0):props.waterlogged==='true'?1:0,light,state:stateKey({Name:state.Name,Properties:props})};
     const id=this.blocks.length;if(id>=65536)throw new Error('Block palette exceeds 16-bit voxel storage');this.blocks.push(block);this.lookup[key]=id;
     this.lookup[`${theme}:${block.state}`]=id;
     if(/door$/.test(name))await this.block(theme,{Name:state.Name,Properties:{...props,open:props.open==='true'?'false':'true'}});

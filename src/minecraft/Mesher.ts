@@ -34,7 +34,7 @@ function rotate(v: Vec3, origin: Vec3, axis: number, angle: number, rescale = fa
   return v;
 }
 
-export function appendElement(mesh: MeshData, element: Element, position: Vec3, block: Block, voxels?: Voxels, blocks?: Block[], light=[1,0]) {
+export function appendElement(mesh: MeshData, element: Element, position: Vec3, block: Block, voxels?: Voxels, blocks?: Block[], light:number[]|((x:number,y:number,z:number)=>number)=[1,0]) {
   const transform=element.transform??block.rotation;
   for (let face = 0; face < 6; face++) {
     const info = element.faces[FACES[face]];
@@ -63,14 +63,16 @@ export function appendElement(mesh: MeshData, element: Element, position: Vec3, 
     for (let i = 0; i < (info.rotation ?? 0) / 90; i++) pairs.unshift(pairs.pop()!);
     const shade=n[0]**2*.6+n[1]**2*(n[1]>0?1:.5)+n[2]**2*.8;
     const tint = (info.tint ? block.tint : [1,1,1]).map(n => n * shade);
-    quad(mesh, corners, n, pairs.flat(), info.tile, tint, block.emissive,light);
+    const center=corners.reduce((sum,p)=>sum.map((v,i)=>v+p[i]/4) as Vec3,[0,0,0] as Vec3);
+    const value=typeof light==='function'?light(...center.map((v,i)=>Math.floor(v+n[i]*.001)) as Vec3):0;
+    quad(mesh, corners, n, pairs.flat(), info.tile, tint, block.emissive,typeof light==='function'?[(value>>4)/15,(value&15)/15]:light);
   }
 }
 
 // Faces merge only within a 16³ chunk; neighbors across chunk boundaries still cull.
 export function meshChunk(voxels: Voxels, blocks: Block[], origin: Vec3, lighting=(x:number,y:number,z:number):number=>240, dynamicDoors=false): { opaque: MeshData; transparent: MeshData } {
   const opaque = emptyMesh(), transparent = emptyMesh();
-  const mask = new Uint32Array(CHUNK * CHUNK), illumination=new Uint32Array(CHUNK*CHUNK), occlusion=new Uint8Array(CHUNK*CHUNK);
+  const mask = new Uint32Array(CHUNK * CHUNK), skyLevels=new Uint32Array(CHUNK*CHUNK), blockLevels=new Uint32Array(CHUNK*CHUNK), occlusion=new Uint8Array(CHUNK*CHUNK);
   // Cache the 27 neighboring arrays: meshing never builds a Map key per block face.
   const chunks=new Map<number,Uint16Array>();
   for(let y=-1;y<=1;y++)for(let z=-1;z<=1;z++)for(let x=-1;x<=1;x++) {
@@ -92,7 +94,7 @@ export function meshChunk(voxels: Voxels, blocks: Block[], origin: Vec3, lightin
         const neighborId=sample(...q),neighbor=blocks[neighborId],cell=j*CHUNK+i;
         mask[cell]=block?.cube&&(!neighbor||!neighbor.occludes&&(!block.transparent||neighborId!==id))?id:0;
         if(!mask[cell])continue;
-        const centerLight=level(q);let packed=0,packedLight=0;
+        const centerLight=level(q);let packed=0,packedSky=0,packedBlock=0;
         const corners=faceCorners([0,0,0],[1,1,1],face);
         for(let n=0;n<4;n++) {
           const u=corners[n][a]===0?-1:1,w=corners[n][b]===0?-1:1;
@@ -100,16 +102,16 @@ export function meshChunk(voxels: Voxels, blocks: Block[], origin: Vec3, lightin
           const A=Number(opaqueAt(...s)),B=Number(opaqueAt(...t)),C=Number(opaqueAt(...c));
           const value=block.transparent||block.emissive?3:A&&B?0:3-A-B-C;packed|=value<<(n*2);
           const levels=[centerLight,level(s)||centerLight,level(t)||centerLight,level(c)||centerLight];
-          const sky=Math.round(levels.reduce((sum,l)=>sum+(l>>4),0)/4),torch=Math.round(levels.reduce((sum,l)=>sum+(l&15),0)/4);
-          packedLight|=((sky<<4)|torch)<<(n*8);
+          packedSky|=levels.reduce((sum,l)=>sum+(l>>4),0)<<(n*8);
+          packedBlock|=levels.reduce((sum,l)=>sum+(l&15),0)<<(n*8);
         }
-        occlusion[cell]=packed;illumination[cell]=packedLight;
+        occlusion[cell]=packed;skyLevels[cell]=packedSky;blockLevels[cell]=packedBlock;
       }
       for (let j = 0; j < CHUNK; j++) for (let i = 0; i < CHUNK;) {
         const id = mask[j * CHUNK + i];
         if (!id) { i++; continue; }
-        const cell=j*CHUNK+i,light=illumination[cell],ao=Array.from({length:4},(_,n)=>(occlusion[cell]>>(n*2))&3),levels=Array.from({length:4},(_,n)=>(light>>>(n*8))&255),merge=ao.every(n=>n===ao[0])&&levels.every(l=>l===levels[0]);
-        const same=(cell:number)=>mask[cell]===id&&illumination[cell]===light&&occlusion[cell]===occlusion[j*CHUNK+i];
+        const cell=j*CHUNK+i,sky=skyLevels[cell],torch=blockLevels[cell],ao=Array.from({length:4},(_,n)=>(occlusion[cell]>>(n*2))&3),levels=Array.from({length:4},(_,n)=>[(sky>>>(n*8)&255)/60,(torch>>>(n*8)&255)/60]),merge=ao.every(n=>n===ao[0])&&levels.every(l=>l[0]===levels[0][0]&&l[1]===levels[0][1]);
+        const same=(cell:number)=>mask[cell]===id&&skyLevels[cell]===sky&&blockLevels[cell]===torch&&occlusion[cell]===occlusion[j*CHUNK+i];
         let width = 1, height = 1;
         while (merge&&i+width < CHUNK && same(j*CHUNK+i+width)) width++;
         outer: while (j+height < CHUNK) {
@@ -126,7 +128,7 @@ export function meshChunk(voxels: Voxels, blocks: Block[], origin: Vec3, lightin
         const uv = [0,0,w,0,w,h,0,h];
         for(let rotation=0;rotation<block.uvRotations[face];rotation++)for(let n=0;n<8;n+=2){const u=uv[n];uv[n]=uv[n+1];uv[n+1]=1-u;}
         const tint = (block.tinted[face] ? block.tint : [1,1,1]).map(n => n * shades[face]);
-        quad(block.transparent ? transparent : opaque, corners, dir, uv, block.tiles[face], tint, block.emissive,levels.flatMap(l=>[(l>>4)/15,(l&15)/15]),ao);
+        quad(block.transparent ? transparent : opaque, corners, dir, uv, block.tiles[face], tint, block.emissive,levels.flat(),ao);
         for (let v=0; v<height; v++) for (let u=0; u<width; u++) mask[(j+v)*CHUNK+i+u]=0;
         i+=width;
       }
@@ -136,8 +138,7 @@ export function meshChunk(voxels: Voxels, blocks: Block[], origin: Vec3, lightin
   for (let y=0;y<CHUNK;y++) for (let z=0;z<CHUNK;z++) for (let x=0;x<CHUNK;x++) {
     const p: Vec3 = [origin[0]+x,origin[1]+y,origin[2]+z], block=blocks[sample(x,y,z)];
     if (!block || block.cube||dynamicDoors&&/door$/.test(block.name)) continue;
-    const level=lighting(p[0],p[1]+1,p[2]);
-    for (const element of block.elements) appendElement(block.transparent ? transparent : opaque,element,p,block,voxels,blocks,[(level>>4)/15,(level&15)/15]);
+    for (const element of block.elements) appendElement(block.transparent ? transparent : opaque,element,p,block,voxels,blocks,lighting);
   }
   return { opaque, transparent };
 }

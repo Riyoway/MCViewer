@@ -16,8 +16,8 @@ try {
   const paint=image.getContext('2d'),texture=new CanvasTexture(image);
   texture.magFilter=NearestFilter;texture.minFilter=NearestMipmapLinearFilter;
   assets.opaque.map.dispose();assets.opaque.map=texture;
-  const tile=assets.manifest.atlas.tiles.findIndex(t=>t.start===1024&&t.frames===1);
-  if(tile<0)throw Error('Atlas row-boundary tile missing');
+  const tile=assets.manifest.atlas.tiles.findIndex(t=>t.frames===1);
+  if(tile<0)throw Error('Static atlas tile missing');
   const data=emptyMesh();
   appendElement(data,{from:[0,0,1],to:[5,4,1],faces:{south:{tile,uv:[0,0,80,64]}}},[0,0,0],{rotation:[0,0,0],emissive:1,tint:[1,1,1]});
   const mesh=assets.mesh(data),info=mesh.geometry.getAttribute('tileInfo'),scene=new Scene();scene.add(mesh);

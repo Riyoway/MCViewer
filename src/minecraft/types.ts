@@ -47,6 +47,8 @@ export interface WorldManifest {
   yaw: number;
   blocks: number; quads: number; triangles: number;
   unsupported: string[];
+  paintings?: number;
+  environment?: {sky_color?:string;fog_color?:string;water_fog_color?:string;water_fog_distance?:number;sun:string;moon:string;clouds:string};
 }
 export interface MeshData {
   position: number[]; normal: number[]; uv: number[]; tile: number[];

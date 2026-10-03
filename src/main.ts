@@ -52,7 +52,7 @@ async function init() {
   async function choose(name:string) {
     const token=++request;selected=name;entered=false;enter.disabled=true;error.hidden=true;loading.textContent='ワールドを読み込み中…';
     document.querySelectorAll<HTMLButtonElement>('[data-world]').forEach(button=>{const active=button.dataset.world===name;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));});
-    worldReady=false;player?.stop();if(world){scene.remove(world.root);world.dispose();}world=new World(assets,name);world.radius=config.view;scene.add(world.root);
+    worldReady=false;player?.stop();if(world){scene.remove(world.root);world.dispose();}world=new World(assets,name);world.radius=config.view;scene.add(world.root);sky.select(name);
     const current=world;
     try {
       await current.start((done,total)=>{if(token===request)loading.textContent=`ワールドを読み込み中… ${Math.round(done/total*100)}%`;});
@@ -71,8 +71,8 @@ async function init() {
   for(let i=0;i<9;i++){const cell=document.createElement('div');cell.className=`slot${i===0?' selected':''}`;cell.innerHTML=`<span>${i+1}</span>`;$('hotbar').append(cell);}
   const selectSlot=(next:number)=>{slot=(next+9)%9;Array.from($('hotbar').children).forEach((cell,i)=>cell.classList.toggle('selected',i===slot));};
   window.addEventListener('wheel',event=>{if(player?.locked){event.preventDefault();selectSlot(slot+Math.sign(event.deltaY));}},{passive:false});
-  const interact=()=>{if(!player?.locked||!world)return;const sound=world.interact(player.eye.toArray(),player.look.toArray());if(sound)audio.effect(sound,.9);};
-  canvas.addEventListener('pointerdown',event=>{if(event.button===2){event.preventDefault();interact();}});
+  const interact=()=>{if(!player?.locked||!world)return;const sound=world.interact(player.eye.toArray(),player.look.toArray());if(sound){model.swing();audio.effect(sound,.9);}};
+  canvas.addEventListener('pointerdown',event=>{if(event.button===2){event.preventDefault();interact();}else if(event.button===0&&player?.locked)model.swing();});
   canvas.addEventListener('contextmenu',event=>event.preventDefault());
   window.addEventListener('keydown',event=>{
     if(player?.locked){if(event.code==='KeyE'&&!event.repeat)interact();if(event.code==='F3'){event.preventDefault();debug=!debug;$('debug').hidden=!debug;}if(/^Digit[1-9]$/.test(event.code))selectSlot(Number(event.code.slice(-1))-1);}
@@ -100,7 +100,7 @@ async function init() {
     if(player&&world){const light=world.light(...player.eye.toArray());assets.entityLight.value.set((light>>4)/15,(light&15)/15);}
     const underwater=!!player&&world?.voxels.get(Math.floor(camera.position.x),Math.floor(camera.position.y),Math.floor(camera.position.z));
     const inWater=!!underwater&&assets.manifest.blocks[underwater]?.name==='water';document.body.classList.toggle('underwater',inWater);
-    if(inWater){fog.color.set('#20417b');fog.near=0;fog.far=24;}
+    if(inWater){fog.color.set(sky.environment?.water_fog_color??'#20417b');fog.near=0;fog.far=sky.environment?.water_fog_distance??24;}
     renderer.render(scene,camera);frames++;fpsTime+=dt;if(fpsTime>1){fps=Math.round(frames/fpsTime);frames=0;fpsTime=0;}
     if(ui==='settings-menu'){$<HTMLInputElement>('time').value=String(sky.time);updateTime();}
     if(debug&&player&&world)$('debug').textContent=`${fps} FPS\nXYZ ${player.position.map(n=>n.toFixed(1)).join(' / ')}\n${world.data.name}\n${player.movement.flying?'Flying':player.movement.swimming?'Swimming':'Walking'}`;

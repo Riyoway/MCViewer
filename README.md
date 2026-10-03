@@ -4,15 +4,14 @@ Three.js + TypeScript + Viteのワールド探索ビューア。展示廊下を�
 
 ## 起動
 
-Node.js 22.12以上、提供された`minecraft-memory-assets/`が必要です。
+Node.js 22.12以上。生成済みの素材・5マップと、再生成に必要なResource Pack・参照素材・元のワールドZIPをリポジトリに収録しています。
 
 ```sh
 npm ci
-npm run assets
 npm run dev
 ```
 
-初回の変換では、提供された配布定義からワールドを取得しMD5を検証します。以後は`.cache/`を使用します。マップ選択画面で読み込みが終わったら「プレイ」を押してください。
+マップ選択画面で読み込みが終わったら「プレイ」を押してください。素材やメッシュを変更したときは`npm run assets`で全マップを再生成します。収録した元ZIPのMD5を配布定義と照合し、元ZIPがないときは従来のキャッシュ・ダウンロードを使用します。再生成には約20分かかります。
 
 ```sh
 npm test
@@ -32,10 +31,13 @@ npm run preview
 | 飛行の切り替え | Spaceを2回 |
 | 飛行中の上昇・下降 | Space / Shift |
 | ドアの開閉 | E / 右クリック |
+| 腕を振る | 左クリック |
 | メニュー | Esc |
 | 座標・FPS | F3 |
 
-20Hzの移動計算に描画時の補間を組み合わせています。ジャンプは0.42ブロック/ティック、重力0.08・減衰0.98で、約1.25ブロックの高さになります。実地形の衝突箱、階段・ハーフブロックへの0.6段差移動、着地、水中の減速、飛行、スニーク時の崖止め、三人称カメラの壁との衝突を扱います。未取得のチャンクには踏み込めません。
+20Hzの移動計算に描画時の補間を組み合わせています。ジャンプは0.42ブロック/ティック、重力0.08・減衰0.98で、約1.25ブロックの高さになります。地面の摩擦による加速・停止、空中の加速、ダッシュジャンプの前進力、氷・スライムの滑り、飛行の慣性と着地解除、水際での0.3の浮上力を使います。実地形の衝突箱、0.6段差移動、スニーク時の崖止め、三人称カメラの壁との衝突を扱います。未取得のチャンクには踏み込めません。
+
+ドア操作と左クリックでは本家の6ティックの腕のスイングを使います。視点の揺れがオフでも操作時のスイングは有効です。Pointer Lockは対応ブラウザで生のマウス入力を使い、ロック直後・フォーカス復帰・画面をまたぐときの異常な移動量を除外します。
 
 ## 表示と設定
 
@@ -55,7 +57,7 @@ Legacy Console / Java表示、Gamma、視野角、描画距離、720p・480p・�
 
 ## データと描画
 
-各マップの中心864×864ブロック、Y=0〜319を変換します。Java変換後に付け加えられた外周の地形は対象外です。収録範囲の端はチャンクの読み込み境界で停止します。MobなどのEntity、Nether、Endは読み込みません。
+各マップの中心864×864ブロック、Y=0〜319を変換します。Java変換後に付け加えられた外周の地形は対象外です。収録範囲の端はチャンクの読み込み境界で停止します。絵画は旧チャンクのEntitiesと新しいentitiesリージョンの両方から、位置・向き・サイズと各パックの画像を復元します。Mob、Nether、Endは読み込みません。
 
 `scripts/pack.ts`が親モデル、Variant、Multipart、各部品の回転、衝突箱と実テクスチャを解決します。ドアは元モデルの寸法を保持し、閉じた状態と開いた状態を同じ衝突データで切り替えます。Chest・Bed・Sign・Skullには実Entityテクスチャを使った形状を補います。チェストは単体／ラージの左右を区別し、蓋の高さ14/16、留め金、上向きYのUVを元モデルに合わせています。レッドストーンは保存された信号強度に応じた赤色を使います。
 
@@ -70,3 +72,11 @@ Entityのテクスチャは面ごとの領域を切り出してからアトラ�
 素材・URL・チェックサムは提供されたファイルを使用します。Default BGMはMinecraft公式1.13 Asset Indexの`music/game/calm1.ogg`。キーボード操作は[Minecraft公式の操作ガイド](https://www.minecraft.net/article/minecraft-controls)と[Educationのキー一覧](https://edusupport.minecraft.net/hc/en-us/articles/360047116832-Minecraft-keyboard-and-mouse-controls)に合わせています。
 
 調査では、Mojangの[Minecraft描画解説（GDC 2026）](https://media.gdcvault.com/gdc2026/Slides/Fairfield_AJ_ModernizingTheRenderingOfMinecraft.pdf)、[公式プレイヤーモデル](https://github.com/Mojang/bedrock-samples/blob/main/resource_pack/models/entity/humanoid.custom.geo.json)、Mojang公式配布の1.21.6クライアントと公式Mappingsを確認しました。ChestModel、ItemInHandRenderer、RedStoneWireBlock、light.glsl、lightmap.fshの寸法・配置・計算を参照しています。
+
+部分モデルは面がある位置の光を使い、頭上の不透明ブロックの内部を参照しません。頂点の光は1/4レベルまで保持します。空の太陽・月は加算描画を使い、黒い背景を重ねません。各パックの太陽・月・雲と`assets/legacy/biome_overrides.json`の色を使います。Halloweenの昼の空は`#3d2300`、霧は`#e4880b`です。
+
+## Vercel
+
+`Riyoway/mineconsole`の`main`はVercelの`mineconsole`プロジェクトに接続済みです。`vercel.json`でVite・`npm ci`・`npm run build`・`dist`を指定しています。検証後にmainへpushすると自動デプロイされ、公開先は https://mineconsole.vercel.app です。
+
+生成済みの`public/generated/`をcommitするため、Vercel側で長時間のマップ変換は実行しません。素材の更新をブラウザが古いまま保持しないよう、生成素材は再検証するCache-Controlを指定しています。CLIから全素材を直接アップロードする方法は[Vercelのアップロード容量・ファイル数制限](https://vercel.com/docs/limits)に当たるため、このプロジェクトはGit連携からデプロイします。

@@ -24,6 +24,8 @@ assert.equal(Object.keys(manifest.worlds).length,5,'All five maps must be playab
 assert.equal(Object.keys(manifest.effects).length,10,'Footsteps, swimming and door sounds must ship with the maps');
 for(const file of [...Object.values(manifest.audio).filter(Boolean),...Object.values(manifest.effects).flat()])assert.equal((await readFile(`public/generated/${file}`)).subarray(0,4).toString(),'OggS');
 for(const world of Object.values(manifest.worlds)) {
+  assert(world.paintings!>0,'Every map restores saved paintings');
+  assert(world.environment?.sun&&world.environment?.moon&&world.environment?.clouds,'Every map has its native sky assets');
   assert(world.blocks>10000000&&world.chunks.length>=2900,'Use the complete original Console map area');
   assert(world.quads<world.blocks);assert(world.chunks.every(c=>c.voxels),'Every render column needs actual collision data');
   assert(world.spawn.every(Number.isFinite));
@@ -57,7 +59,7 @@ for(const type of ['single','left','right'])for(const facing of ['north','east',
   assert(direction.reduce((sum,n,i)=>sum+n*((latch.from[i]+latch.to[i])/2-.5),0)>.46,'Latch faces the chest front');
   if(type==='single') {
     const face=chest.elements[0].faces.south!,image=await sharp(packs.images[packs.tiles[face.tile].start]).extract({left:16,top:16,width:32,height:32}).raw().toBuffer();
-    const skin=await sharp('minecraft-memory-assets/references/minecraft-assets/data/1.21.6/entity/chest/normal.png').ensureAlpha().extract({left:42,top:33,width:14,height:10}).resize(32,32,{kernel:'nearest'}).raw().toBuffer();assert(image.equals(skin),'Chest front keeps native skin pixels');
+    const skin=await sharp('minecraft-memory-assets/references/native-data/1.21.6/entity/chest/normal.png').ensureAlpha().extract({left:42,top:33,width:14,height:10}).resize(32,32,{kernel:'nearest'}).raw().toBuffer();assert(image.equals(skin),'Chest front keeps native skin pixels');
   }else assert.equal(chest.elements[0].to[0]-chest.elements[0].from[0],15/16,'Double-chest halves meet without a gap');
 }
 const arm=skinBox(4,12,4,40,16,new MeshBasicMaterial(),64,64),armUv=arm.geometry.attributes.uv;
@@ -71,6 +73,15 @@ assert(packs.blocks[log].uvRotations.some(Boolean));const grain=meshChunk(timber
 for(let vertex=0;vertex<24;vertex+=4)for(const [a,b] of [[0,1],[1,2]])assert.equal(Math.hypot(...[0,1].map(d=>grain.uv[(vertex+a)*2+d]-grain.uv[(vertex+b)*2+d])),Math.hypot(...[0,1,2].map(d=>grain.position[(vertex+a)*3+d]-grain.position[(vertex+b)*3+d])),'Rotated grain keeps one texture tile per block on merged faces');
 
 const fenceId=await packs.block('vanilla',{Name:'minecraft:oak_fence',Properties:{north:'true',east:'true',south:'false',west:'false'}}),fence=packs.blocks[fenceId],fenceMesh=emptyMesh();
+assert.equal(fence.opacity,0,'Fence posts leave space for sky/block light');
+const shelter=new Voxels();shelter.set(0,0,0,fenceId);shelter.set(0,1,0,stone);
+const sheltered=meshChunk(shelter,packs.blocks,[0,0,0],(x,y,z)=>y===1&&x===0&&z===0?0:0xe7).opaque;
+const postVertices=sheltered.position.map((_,i)=>i%3===1&&sheltered.position[i]<1?(i-1)/3:-1).filter(i=>i>=0);
+assert(postVertices.every(i=>sheltered.light[i*2]>0),'Fence sides sample their exposed space rather than the roof interior');
+const picture=await packs.painting('vanilla',{variant:'minecraft:pool',facing:1,Pos:[2,4,6]}),pictureMesh=emptyMesh();
+for(const e of picture.elements)appendElement(pictureMesh,e,picture.position,{rotation:picture.rotation,tint:[1,1,1],emissive:0} as any);
+assert.equal(picture.elements.length,2,'Two-block paintings retain a texture tile for each block');
+assert(Math.abs(Math.max(...pictureMesh.position.filter((_,i)=>i%3===2))-Math.min(...pictureMesh.position.filter((_,i)=>i%3===2))-2)<1e-6,'Painting size and hanging direction match NBT');
 for(const e of fence.elements)appendElement(fenceMesh,e,[0,0,0],fence);
 assert(Math.min(...fenceMesh.position.filter((_,i)=>i%3===2))<.01,'Multipart north rail keeps its own rotation');
 assert(Math.max(...fenceMesh.position.filter((_,i)=>i%3===0))>.99,'Multipart east rail keeps its own rotation');
@@ -97,11 +108,11 @@ for(const [facing,direction] of Object.entries({north:[0,0,-1],east:[1,0,0],sout
   const legs=bed.collision.slice(1),legEdge=direction.reduce((sum,n,axis)=>sum+n*(legs.reduce((s,b)=>s+(b.from[axis]+b.to[axis])/4,0)-.5),0);
   assert(Math.abs(legEdge-(part==='head'?1:-1)*.40625)<1e-6,'Bed legs stay at the two outer ends');
   const tile=bed.elements[0].faces.north!.tile,actual=await sharp(packs.images[packs.tiles[tile].start]).extract({left:16,top:16,width:32,height:32}).raw().toBuffer();
-  const expected=await sharp('minecraft-memory-assets/references/minecraft-assets/data/1.13/entity/bed/red.png').ensureAlpha().extract({left:6,top:part==='head'?6:28,width:16,height:16}).resize(32,32,{kernel:'nearest'}).raw().toBuffer();
+  const expected=await sharp('minecraft-memory-assets/references/native-data/1.13/entity/bed/red.png').ensureAlpha().extract({left:6,top:part==='head'?6:28,width:16,height:16}).resize(32,32,{kernel:'nearest'}).raw().toBuffer();
   assert(actual.equals(expected),'Keep the exact pillow/blanket pixels rather than downsampling the whole bed skin');
   for(const [i,leg] of bed.elements.slice(1).entries()){
     const image=await sharp(packs.images[packs.tiles[leg.faces.north!.tile].start]).extract({left:16,top:16,width:32,height:32}).raw().toBuffer();
-    const skin=await sharp('minecraft-memory-assets/references/minecraft-assets/data/1.13/entity/bed/red.png').ensureAlpha().extract({left:53,top:3+i*6,width:3,height:3}).resize(32,32,{kernel:'nearest'}).raw().toBuffer();
+    const skin=await sharp('minecraft-memory-assets/references/native-data/1.13/entity/bed/red.png').ensureAlpha().extract({left:53,top:3+i*6,width:3,height:3}).resize(32,32,{kernel:'nearest'}).raw().toBuffer();
     assert(image.equals(skin),'Legs use the bed skin at u=50 rather than transparent mattress padding');
   }
 }
@@ -114,19 +125,27 @@ for(let i=0;i<5;i++)body.tick(0,0,0,false,false,false);assert(body.grounded);
 let peak=0;for(let i=0;i<40;i++){body.tick(0,0,0,i===0,false,false);peak=Math.max(peak,body.position[1]);}
 assert(peak>1.2&&peak<1.3,'Minecraft 20Hz jump reaches about 1.25 blocks');assert.equal(body.position[1],0);assert(body.grounded);
 body.position.splice(0,3,0,0,10);body.stop();for(let i=0;i<20;i++)body.tick(1,0,0,false,false,false);const walk=10-body.position[2];
+assert(walk>3.9&&walk<4.2,'Native ground acceleration approaches 4.317 blocks per second');
 body.position.splice(0,3,0,0,10);body.stop();for(let i=0;i<20;i++)body.tick(1,0,0,false,true,false);assert(10-body.position[2]>walk*1.25,'Sprint is faster than walking');
 body.position.splice(0,3,1,0,2);body.stop();for(let i=0;i<30;i++)body.tick(0,1,0,false,false,false);assert(body.position[0]<1.73,'Do not tunnel through walls');
 body.position.splice(0,3,0,0,1.5);body.stop();body.grounded=true;for(let i=0;i<7;i++)body.tick(1,0,0,false,false,false);assert.equal(body.position[1],.5,'Auto step onto a slab');
 for(let i=0;i<12;i++)body.tick(-1,0,0,false,false,false);assert.equal(body.position[1],0,'Gravity takes the player down from a slab');
 body.position.splice(0,3,0,.5,0);body.flying=true;for(let i=0;i<10;i++)body.tick(0,0,0,true,false,false);assert(body.position[1]>2);body.flying=false;
+const waterId=await packs.block('vanilla',{Name:'minecraft:water',Properties:{level:'0'}}),pool=new Voxels();pool.fill([-4,-1,-4],[20,0,4],stone);pool.fill([-4,0,-4],[0,1,4],waterId);pool.fill([0,0,-4],[20,1,4],stone);
+const swimmer=new Movement(new Collision(pool,packs.blocks));swimmer.position.splice(0,3,-.5,0,.5);
+for(let i=0;i<50;i++)swimmer.tick(0,1,0,true,false,false);
+assert(swimmer.position[0]>.5&&swimmer.position[1]>=1,'Swimming into a bank supplies the native 0.3 water-exit impulse');
 body.position.splice(0,3,0,5,4);body.stop();for(let i=0;i<40;i++)body.tick(0,0,0,false,false,false);assert.equal(body.position[1],0,'Landing from a fall');
 collision.loaded=()=>false;const blocked=[...body.position];body.tick(1,0,0,true,true,false);assert.deepEqual(body.position,blocked,'Do not walk or fall into unloaded chunks');
 
-const inputWindow=new EventTarget(),canvas={} as HTMLCanvasElement,inputDocument=Object.assign(new EventTarget(),{pointerLockElement:canvas as HTMLCanvasElement|null,exitPointerLock(){this.pointerLockElement=null;this.dispatchEvent(new Event('pointerlockchange'));}});
+const inputWindow=new EventTarget(),canvas={clientWidth:1000,clientHeight:700} as HTMLCanvasElement,inputDocument=Object.assign(new EventTarget(),{pointerLockElement:canvas as HTMLCanvasElement|null,exitPointerLock(){this.pointerLockElement=null;this.dispatchEvent(new Event('pointerlockchange'));}});
 Object.assign(globalThis,{window:inputWindow,document:inputDocument});
 const inputPlayer=new Player(new PerspectiveCamera(),new PlayerModel(),collision,canvas,()=>{});
 inputPlayer.update(0);assert.equal(inputPlayer.model.hand.visible,false,'The map menu has no first-person hand');
 inputDocument.dispatchEvent(new Event('pointerlockchange'));
+const mouse=(x:number,y:number)=>inputDocument.dispatchEvent(Object.assign(new Event('mousemove'),{movementX:x,movementY:y}));
+mouse(900,500);assert.equal(inputPlayer.yaw,0,'Ignore pointer-lock entry warp');mouse(10,5);const turned=inputPlayer.yaw;assert.equal(turned,-.02);mouse(1600,-1000);assert.equal(inputPlayer.yaw,turned,'Ignore discontinuous display warp');mouse(20,0);assert.equal(inputPlayer.yaw,-.06,'Normal mouse input continues after a rejected warp');
+inputPlayer.model.swing();inputPlayer.model.update(.075,0,0,0,0,0,true);assert(inputPlayer.model.hand.position.x<.64,'Interaction swing moves the arm toward the crosshair even with bobbing off');inputPlayer.model.update(.3,0,0,0,0,0,true);assert.deepEqual(inputPlayer.model.hand.position.toArray(),[.64,-.6,-.72],'The native six-tick swing returns to rest');
 collision.loaded=()=>true;inputPlayer.position.splice(0,3,0,0,4);inputPlayer.update(0);inputPlayer.keys.add('KeyW');
 for(let i=0;i<20;i++){inputPlayer.update(.05);assert(inputPlayer.camera.rotation.z===0);assert.equal(inputPlayer.camera.position.y,inputPlayer.eye.y,'Walking has no camera bob');assert.equal(inputPlayer.model.hand.position.y,-.6,'Walking has no hand bob');}inputPlayer.stop();
 const press=(code:string)=>inputWindow.dispatchEvent(Object.assign(new Event('keydown',{cancelable:true}),{code,repeat:false}));
@@ -152,5 +171,6 @@ for(const padded of [false,true]) {
 }
 assert.throws(()=>unpackPalette([],17,true));assert.equal(legacyState(5,1).Name,'minecraft:spruce_planks');
 const sky=new Sky({daylight:{value:0},time:{value:0}} as any),fog=new Fog('#fff');sky.time=6000;sky.cycle=false;sky.update(10,new Vector3(),fog,true,96);assert.equal(sky.time,6000);assert.equal(sky.brightness,1);
+sky.environment={sky_color:'#3d2300',fog_color:'#e4880b',sun:'',moon:'',clouds:''};sky.update(0,new Vector3(),fog,true,96);assert.equal(fog.color.getHexString(),'e4880b','Halloween keeps the pack’s original orange fog');
 sky.time=18000;sky.update(0,new Vector3(),fog,true,96);assert(sky.brightness<.1);sky.cycle=true;sky.time=0;sky.minutes=20;sky.update(1200,new Vector3(),fog,true,96);assert.equal(sky.time,0);
 console.log('Checks passed: five maps, native chest/bed/arm UVs, redstone tint, sky/torch propagation, stored light, doors, stable walking, movement/input, audio, Anvil and day/night.');

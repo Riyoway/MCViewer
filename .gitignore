@@ -3,5 +3,14 @@ dist/
 .cache/
 test-results/
 .playwright-mcp/
-minecraft-memory-assets/
-public/generated/
+.vercel/
+.env*
+minecraft-memory-assets/*
+!minecraft-memory-assets/resourcepacks/
+!minecraft-memory-assets/references/
+minecraft-memory-assets/references/*
+!minecraft-memory-assets/references/native-data/
+!minecraft-memory-assets/worlds/
+minecraft-memory-assets/worlds/*
+!minecraft-memory-assets/worlds/templates/
+!minecraft-memory-assets/worlds/archives/

@@ -1,7 +1,7 @@
 import { Voxels } from '../minecraft/Voxels';
 import type { Block, Vec3 } from '../minecraft/types';
 export interface Collider { min:Vec3; max:Vec3; enabled?:boolean }
-export const RADIUS=.28, HEIGHT=1.8, STEP=.6;
+export const RADIUS=.3, HEIGHT=1.8, STEP=.6;
 
 export class Collision {
   readonly extra:Collider[]=[];

@@ -25,13 +25,15 @@ export function unpackPalette(data: ([number, number] | bigint)[], paletteLength
   return output;
 }
 
-export async function* readChunks(files: Record<string, Uint8Array>, bounds: { min: number[]; max: number[] }) {
+export async function* readChunks(files: Record<string, Uint8Array>, bounds: { min: number[]; max: number[] }, kind='region') {
   for (const [name, bytes] of Object.entries(files)) {
-    if (!/(^|\/)region\/r\.-?\d+\.-?\d+\.mca$/.test(name) || /DIM-?\d/.test(name) || /dimensions\//.test(name) && !/dimensions\/minecraft\/overworld\//.test(name)) continue;
+    if (!new RegExp(`(^|/)${kind}/r\\.-?\\d+\\.-?\\d+\\.mca$`).test(name) || /DIM-?\d/.test(name) || /dimensions\//.test(name) && !/dimensions\/minecraft\/overworld\//.test(name)) continue;
     const match = /r\.(-?\d+)\.(-?\d+)\.mca$/.exec(name)!;
     const rx=Number(match[1]), rz=Number(match[2]);
     if ((rx+1)*512 <= bounds.min[0] || rx*512 >= bounds.max[0] || (rz+1)*512 <= bounds.min[2] || rz*512 >= bounds.max[2]) continue;
     const region = Buffer.from(bytes);
+    if(!region.length)continue;
+    if(region.length<8192)throw new Error(`Truncated region header: ${name}`);
     for (let i=0;i<1024;i++) {
       const cx=rx*32+(i%32), cz=rz*32+Math.floor(i/32);
       if ((cx+1)*16 <= bounds.min[0] || cx*16 >= bounds.max[0] || (cz+1)*16 <= bounds.min[2] || cz*16 >= bounds.max[2]) continue;

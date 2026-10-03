@@ -43,8 +43,8 @@ if(process.argv.includes('--sound-list'))console.log(Object.keys(await vanillaSo
 
 export async function downloadWorld(theme: 'mario' | 'tutorial' | 'festive' | 'halloween' | 'chinese') {
   const source = theme !== 'tutorial'
-    ? 'minecraft-memory-assets/worlds/legacy-worlds/assets/brand/world_templates.json'
-    : 'minecraft-memory-assets/worlds/tutorial-worlds/assets/l4jtutorialworlds/world_templates.json';
+    ? 'minecraft-memory-assets/worlds/templates/legacy/world_templates.json'
+    : 'minecraft-memory-assets/worlds/templates/tutorial/world_templates.json';
   const templates = JSON.parse(await readFile(source, 'utf8'));
   const template = {mario:'super_mario',tutorial:'tutorial14',festive:'festive',halloween:'halloween',chinese:'chinese_mythology'}[theme];
   const entry = templates.find((t: { templateLocation: string }) => t.templateLocation.includes(template));
@@ -52,17 +52,19 @@ export async function downloadWorld(theme: 'mario' | 'tutorial' | 'festive' | 'h
   await mkdir('.cache', { recursive: true });
   const path = `.cache/${theme}.zip`;
   let data: Buffer;
-  try { data = await readFile(path); }
+  try { data = await readFile(`minecraft-memory-assets/worlds/archives/${theme}.zip`); }
   catch {
-    console.log(`Downloading ${entry.folderName} from supplied template…`);
-    data = await fetchBytes(entry.downloadURI);
-    await writeFile(path, data);
+    try{data=await readFile(path);}catch{
+      console.log(`Downloading ${entry.folderName} from supplied template…`);
+      data = await fetchBytes(entry.downloadURI);
+      await writeFile(path, data);
+    }
   }
   // The supplied checksums omit leading zeroes.
   const expected = new URL(entry.downloadURI).searchParams.get('checksum');
   const checksum = createHash('md5').update(data).digest('hex');
   if (expected && checksum.replace(/^0+/, '') !== expected.replace(/^0+/, '')) {
-    throw new Error(`World checksum mismatch: ${theme}. Delete ${path} and retry.`);
+    throw new Error(`World checksum mismatch: ${theme}. Restore the supplied ZIP or delete ${path} and retry.`);
   }
   return { files: unzipSync(data), source: entry.downloadURI, checksum, name: entry.folderName };
 }

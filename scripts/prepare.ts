@@ -9,9 +9,9 @@ import { legacyState, doorHalves } from './legacy.ts';
 import { Packs } from './pack.ts';
 import { rebuildLighting } from './lighting.ts';
 import { Voxels, encodeColumn, decodeColumn } from '../src/minecraft/Voxels.ts';
-import { meshChunk, emptyMesh } from '../src/minecraft/Mesher.ts';
+import { meshChunk, emptyMesh, appendElement } from '../src/minecraft/Mesher.ts';
 import { encodeMeshes } from '../src/minecraft/binary.ts';
-import type { Vec3, WorldManifest, Manifest } from '../src/minecraft/types.ts';
+import type { Vec3, WorldManifest, Manifest, Block } from '../src/minecraft/types.ts';
 
 const output='public/generated';await mkdir(output,{recursive:true});
 const packs=new Packs(),worlds:Record<string,WorldManifest>={};
@@ -30,6 +30,8 @@ for(const theme of ['tutorial','mario','festive','halloween','chinese'] as const
   const yaw=level.spawn?.yaw??level.SpawnAngle??0;
   const voxels=new Voxels(),lights=new Voxels(),paletteCache=new Map<string,number>();
   const oldDoors=new Map<string,State>();
+  const paintingEntities=new Map<string,any>();
+  const collect=(root:any)=>{for(const e of root.Entities??root.entities??[])if(e.id==='minecraft:painting'||e.id==='Painting')paintingEntities.set(JSON.stringify(e.UUID??[e.Pos,e.variant??e.Motive,e.facing??e.Facing]),e);};
   const width=bounds.max[0]-bounds.min[0],depth=bounds.max[2]-bounds.min[2],heightmap=new Int16Array(width*depth).fill(-1);
   const ids=async(palette:State[])=>{
     const mapped:number[]=[];
@@ -38,6 +40,7 @@ for(const theme of ['tutorial','mario','festive','halloween','chinese'] as const
   };
   let total=0,processed=0;
   for await(const {root,version} of readChunks(world.files,bounds)) {
+    collect(root);
     for(const section of root.sections??root.Sections??[]) {
       const sy=section.Y*16;if(sy<bounds.min[1]||sy>=bounds.max[1])continue;
       const palette=section.block_states?.palette??section.Palette;
@@ -65,6 +68,13 @@ for(const theme of ['tutorial','mario','festive','halloween','chinese'] as const
   for(const [key,lower] of oldDoors){if(lower.Properties?.half!=='lower')continue;const [x,y,z]=key.split(',').map(Number),upper=oldDoors.get(`${x},${y+1},${z}`);if(!upper||upper.Name!==lower.Name)continue;
     const pair=doorHalves(lower,upper);for(const [dy,state] of pair.entries())voxels.set(x,y+dy,z,await packs.block(pack,state));
   }
+  for await(const {root} of readChunks(world.files,bounds,'entities'))collect(root);
+  const paintings=new Map<string,Awaited<ReturnType<Packs['painting']>>[]>();let paintingCount=0;
+  for(const e of paintingEntities.values()){
+    if(!e.Pos?.every((n:number,i:number)=>Number.isFinite(n)&&n>=bounds.min[i]&&n<bounds.max[i]))continue;
+    const painting=await packs.painting(pack,e),key=`${Math.floor(painting.position[0]/16)*16}_${Math.floor(painting.position[2]/16)*16}`;
+    if(!paintings.has(key))paintings.set(key,[]);paintings.get(key)!.push(painting);paintingCount++;
+  }
   const lighting=materialsOnly?undefined:rebuildLighting(voxels,packs.blocks,lights,bounds,heightmap);
   const generated=resolve(output,theme);if(dirname(generated)!==resolve(output))throw new Error('Invalid generated directory');
   if(!materialsOnly)await rm(generated,{recursive:true,force:true});await mkdir(generated,{recursive:true});
@@ -81,6 +91,7 @@ for(const theme of ['tutorial','mario','festive','halloween','chinese'] as const
         for(const index of source.index)target.index.push(index+offset);
       }
     }
+    if(!materialsOnly)for(const painting of paintings.get(`${origin[0]}_${origin[2]}`)??[])for(const element of painting.elements)appendElement(mesh.opaque,element,painting.position,{rotation:painting.rotation,tint:[1,1,1],emissive:0} as Block,undefined,undefined,lighting);
     let count=(mesh.opaque.index.length+mesh.transparent.index.length)/6;const file=`${theme}/${origin[0]}_${origin[2]}.bin.gz`,voxelFile=`${theme}/${origin[0]}_${origin[2]}.vox.gz`;
     if(materialsOnly) {
       const existing=gunzipSync(await readFile(`${output}/${voxelFile}`));
@@ -92,12 +103,18 @@ for(const theme of ['tutorial','mario','festive','halloween','chinese'] as const
     chunks.push({file,voxels:voxelFile,origin,quads:count});quads+=count;
     if(++done%256===0)console.log(`  ${materialsOnly?'Verified':'Meshed'} ${done}/${columns.size} columns`);
   }
-  worlds[theme]={name:theme==='tutorial'?'Tutorial World · TU14':world.name.replace(' Save',''),source:world.source,checksum:world.checksum,bounds,spawn,yaw,chunks,blocks:total,quads,triangles:quads*2,unsupported:[...packs.unsupported].filter(s=>s.startsWith(`${pack}:`))};
+  let colors:any={};if(theme!=='tutorial')try{colors=JSON.parse(await readFile(`minecraft-memory-assets/resourcepacks/${pack}/assets/legacy/biome_overrides.json`,'utf8')).overrides?.default??{};}catch{/* pack has no overrides */}
+  const environment:NonNullable<WorldManifest['environment']>={sky_color:colors.sky_color,fog_color:colors.fog_color,water_fog_color:colors.water_fog_color,water_fog_distance:colors.water_fog_distance,sun:`${theme}-sun.png`,moon:`${theme}-moon.png`,clouds:`${theme}-clouds.png`};
+  for(const [from,to] of [['sun','sun'],['moon_phases','moon'],['clouds','clouds']]){
+    const vanilla=`minecraft-memory-assets/references/native-data/1.13/environment/${from}.png`,native=`minecraft-memory-assets/resourcepacks/${pack}/assets/minecraft/textures/environment/${from}.png`;
+    try{await copyFile(native,`${output}/${theme}-${to}.png`);}catch{await copyFile(vanilla,`${output}/${theme}-${to}.png`);}
+  }
+  worlds[theme]={name:theme==='tutorial'?'Tutorial World · TU14':world.name.replace(' Save',''),source:world.source,checksum:world.checksum,bounds,spawn,yaw,chunks,blocks:total,quads,triangles:quads*2,paintings:paintingCount,environment,unsupported:[...packs.unsupported].filter(s=>s.startsWith(`${pack}:`))};
   console.log(`  ${total.toLocaleString()} blocks → ${quads.toLocaleString()} quads`);
 }
-await copyFile('minecraft-memory-assets/references/minecraft-assets/data/1.13/entity/steve.png',`${output}/steve.png`);
-for(const [from,to] of [['sun','sun'],['moon_phases','moon'],['clouds','clouds']])await copyFile(`minecraft-memory-assets/references/minecraft-assets/data/1.13/environment/${from}.png`,`${output}/${to}.png`);
-for(const [theme,icon] of Object.entries({mario:'super_mario',festive:'festive',halloween:'halloween',chinese:'chinese_mythology'}))await copyFile(`minecraft-memory-assets/worlds/legacy-worlds/assets/brand/textures/gui/sprites/creation_list/${icon}.png`,`${output}/${theme}-icon.png`);
+await copyFile('minecraft-memory-assets/references/native-data/1.13/entity/steve.png',`${output}/steve.png`);
+for(const [from,to] of [['sun','sun'],['moon_phases','moon'],['clouds','clouds']])await copyFile(`minecraft-memory-assets/references/native-data/1.13/environment/${from}.png`,`${output}/${to}.png`);
+for(const [theme,icon] of Object.entries({mario:'super_mario',festive:'festive',halloween:'halloween',chinese:'chinese_mythology'}))await copyFile(`minecraft-memory-assets/worlds/templates/legacy/textures/gui/sprites/creation_list/${icon}.png`,`${output}/${theme}-icon.png`);
 const tutorialIcon=(await downloadWorld('tutorial')).files['icon.png'];if(tutorialIcon)await writeFile(`${output}/tutorial-icon.png`,tutorialIcon);
 const tracks:Record<string,string>={mario:'maintheme',festive:'flake',halloween:'h1',chinese:'02_chang_an_-_perpetual_peace_overworld'};
 const audio:Manifest['audio']={};

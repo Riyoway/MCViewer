@@ -1,0 +1,5 @@
+*.png binary
+*.ogg binary
+*.gz binary
+*.zip binary
+minecraft-memory-assets/** -text
