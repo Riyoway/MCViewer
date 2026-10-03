@@ -26,6 +26,7 @@ assert.equal(Object.keys(manifest.effects).length,10,'Footsteps, swimming and do
 for(const block of manifest.blocks) {
   if(block?.fluid){assert.equal(block.cube,false,'Generated liquids use the surface mesher');assert(Number.isInteger(block.fluidLevel)&&block.fluidLevel!>=0&&block.fluidLevel!<=15);assert(block.fluidTiles&&block.fluidTiles.length>=2,'Generated liquids include both Still and Flow');for(const tile of block.fluidTiles)assert(manifest.atlas.tiles[tile]);}
   if(block?.name.endsWith('_fence'))assert.equal(Math.max(...block.collision.map(b=>b.to[1])),1.5,'Generated fences retain native collision height');
+  if(block&&/^(chest|trapped_chest|ender_chest)$/.test(block.name))for(const e of block.elements)for(const face of Object.values(e.faces))assert(manifest.atlas.tiles[face!.tile].size,'Generated chest faces preserve native texel spacing');
 }
 for(const file of [...Object.values(manifest.audio).filter(Boolean),...Object.values(manifest.effects).flat()])assert.equal((await readFile(`public/generated/${file}`)).subarray(0,4).toString(),'OggS');
 for(const world of Object.values(manifest.worlds)) {
@@ -63,8 +64,9 @@ for(const type of ['single','left','right'])for(const facing of ['north','east',
   assert(Math.abs(latch.from[1]-7/16)<1e-6&&Math.abs(latch.to[1]-11/16)<1e-6);
   assert(direction.reduce((sum,n,i)=>sum+n*((latch.from[i]+latch.to[i])/2-.5),0)>.46,'Latch faces the chest front');
   if(type==='single') {
-    const face=chest.elements[0].faces.south!,image=await sharp(packs.images[packs.tiles[face.tile].start]).extract({left:16,top:16,width:32,height:32}).raw().toBuffer();
-    const skin=await sharp('minecraft-memory-assets/references/native-data/1.21.6/entity/chest/normal.png').ensureAlpha().extract({left:42,top:33,width:14,height:10}).resize(32,32,{kernel:'nearest'}).raw().toBuffer();assert(image.equals(skin),'Chest front keeps native skin pixels');
+    const face=chest.elements[0].faces.south!,tile=packs.tiles[face.tile];assert.deepEqual(tile.size,[28,30]);
+    const image=await sharp(packs.images[tile.start]).extract({left:18,top:17,width:28,height:30}).raw().toBuffer();
+    const skin=await sharp('minecraft-memory-assets/references/native-data/1.21.6/entity/chest/normal.png').ensureAlpha().extract({left:42,top:33,width:14,height:10}).resize(28,30,{kernel:'nearest'}).raw().toBuffer();assert(image.equals(skin),'Every chest texel has the same integer footprint');
   }else assert.equal(chest.elements[0].to[0]-chest.elements[0].from[0],15/16,'Double-chest halves meet without a gap');
 }
 const arm=skinBox(4,12,4,40,16,new MeshBasicMaterial(),64,64),armUv=arm.geometry.attributes.uv;
@@ -137,6 +139,10 @@ body.position.splice(0,3,0,0,1.5);body.stop();body.grounded=true;for(let i=0;i<7
 for(let i=0;i<12;i++)body.tick(-1,0,0,false,false,false);assert.equal(body.position[1],0,'Gravity takes the player down from a slab');
 body.position.splice(0,3,0,.5,0);body.flying=true;for(let i=0;i<10;i++)body.tick(0,0,0,true,false,false);assert(body.position[1]>2);body.flying=false;
 const waterId=await packs.block('vanilla',{Name:'minecraft:water',Properties:{level:'0'}}),pool=new Voxels();pool.fill([-4,-1,-4],[20,0,4],stone);pool.fill([-4,0,-4],[0,1,4],waterId);pool.fill([0,0,-4],[20,1,4],stone);
+const allocationOrder:string[]=[],ordered=new Packs();
+ordered.tile=async(_theme,texture)=>{await new Promise(resolve=>setTimeout(resolve,texture.endsWith('_still')?10:0));return allocationOrder.push(texture)-1;};
+await ordered.block('vanilla',{Name:'minecraft:water'});
+assert.deepEqual(allocationOrder,['water_still','water_flow','water_overlay'],'Atlas allocation follows texture order even when Still loads last');
 await assert.rejects(()=>packs.block('vanilla',{Name:'minecraft:water',Properties:{level:'16'}}),/Invalid fluid level/);
 for(const kind of ['water','lava']) {
   const ids=await Promise.all([0,1,7,8].map(level=>packs.block('vanilla',{Name:`minecraft:${kind}`,Properties:{level:String(level)}})));

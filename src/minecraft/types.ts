@@ -1,7 +1,7 @@
 export type Vec3 = [number, number, number];
 export type FaceName = 'east' | 'west' | 'up' | 'down' | 'south' | 'north';
 export const FACES: FaceName[] = ['east', 'west', 'up', 'down', 'south', 'north'];
-export interface Tile { start: number; frames: number; ticks?: number }
+export interface Tile { start: number; frames: number; ticks?: number; size?: [number,number] }
 export interface Element {
   from: Vec3;
   to: Vec3;

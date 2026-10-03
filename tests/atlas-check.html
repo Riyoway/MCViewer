@@ -5,7 +5,7 @@
 <link rel="icon" href="data:,">
 <pre id="result">Checking…</pre>
 <script type="module">
-import { CanvasTexture, NearestFilter, NearestMipmapLinearFilter, Scene, PerspectiveCamera, WebGLRenderer, WebGLRenderTarget } from 'three';
+import { CanvasTexture, NearestFilter, NearestMipmapLinearFilter, Scene, PerspectiveCamera, OrthographicCamera, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { AssetManager } from '/src/core/AssetManager.ts';
 import { appendElement, emptyMesh } from '/src/minecraft/Mesher.ts';
 
@@ -54,8 +54,25 @@ try {
   }
   const cave=brightness(.08,0,0,0),bright=brightness(.08,1,0,0),day=brightness(1,0,1,0),night=brightness(.08,0,1,0),torch=brightness(.08,0,0,7/15);
   if(!(bright[0]>cave[0]&&day[2]>night[2]&&torch[0]>torch[1]&&torch[1]>torch[2]))throw Error(`Incorrect Gamma/sky/torch light: ${JSON.stringify({cave,bright,day,night,torch})}`);
+  // A native 14×10 chest face must render fourteen equal columns and ten equal rows.
+  const entry=assets.manifest.atlas.tiles[tile],oldSize=entry.size;entry.size=[28,30];
+  const chestData=emptyMesh();appendElement(chestData,{from:[0,0,1],to:[14,10,1],faces:{south:{tile,uv:[0,0,16,16]}}},[0,0,0],{rotation:[0,0,0],emissive:1,tint:[1,1,1]});chestData.color.fill(1);
+  const chest=assets.mesh(chestData);entry.size=oldSize;scene.remove(mesh);scene.add(chest);
+  paint.fillStyle='lime';paint.fillRect(0,0,size,size);
+  for(let y=0;y<10;y++)for(let x=0;x<14;x++){
+    paint.fillStyle=(x+y)%2?'blue':'red';paint.fillRect(entry.start%columns*cell+18+x*2,Math.floor(entry.start/columns)*cell+17+y*3,2,3);
+  }
+  texture.needsUpdate=true;assets.time.value=0;
+  const ortho=new OrthographicCamera(0,14,10,0,.1,10);ortho.position.z=3;
+  renderer.render(scene,ortho);renderer.readRenderTargetPixels(target,0,0,960,720,pixels);
+  for(let y=0;y<720;y++)for(let x=0;x<960;x++){
+    const u=x*14/960,v=y*10/720;if(Math.abs(u-Math.round(u))<14/960||Math.abs(v-Math.round(v))<10/720)continue;
+    const channel=(Math.floor(u)+9-Math.floor(v))%2?2:0,i=(y*960+x)*4;
+    if(pixels[i+channel]<245||pixels[i+1]>0)throw Error(`Uneven chest texel at ${x},${y}: ${pixels.slice(i,i+3)}`);
+  }
+  checks++;chest.geometry.dispose();
   mesh.geometry.dispose();texture.dispose();target.dispose();renderer.dispose();
-  document.querySelector('#result').textContent=`PASS: ${checks} GPU checks (atlas, native tint, Gamma, day/night and warm torch light)`;
+  document.querySelector('#result').textContent=`PASS: ${checks} GPU checks (atlas, chest texel spacing, native tint, Gamma, day/night and warm torch light)`;
 } catch(error) {
   document.querySelector('#result').textContent=`FAIL: ${error.message}`;
   throw error;

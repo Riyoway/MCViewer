@@ -16,6 +16,7 @@ import type { Vec3, WorldManifest, Manifest, Block } from '../src/minecraft/type
 const output='public/generated';await mkdir(output,{recursive:true});
 const packs=new Packs(),worlds:Record<string,WorldManifest>={};
 const materialsOnly=process.argv.includes('--materials');
+const previous=materialsOnly?JSON.parse(await readFile(`${output}/manifest.json`,'utf8')) as Manifest:undefined;
 // The original finite Console maps occupy the central 864×864 blocks.
 // New terrain generated around those saves by their Java conversion is excluded.
 const bounds={min:[-432,0,-432] as Vec3,max:[432,320,432] as Vec3};
@@ -126,6 +127,7 @@ for(const group of ['wood','stone','grass','gravel','snow','sand','cloth','swim'
   effects[group]=[];const names=group.startsWith('door_')?[`random/${group}`]:Array.from({length:group==='swim'?2:4},(_,i)=>`${group==='swim'?'liquid':'step'}/${group}${i+1}`);
   for(const name of names){const file=`effects/${name.replaceAll('/','-')}.ogg`;await writeFile(`${output}/${file}`,await downloadSound(name));effects[group].push(file);}
 }
+if(previous&&JSON.stringify(previous.blocks)!==JSON.stringify(packs.blocks))throw new Error('Block geometry or texture IDs changed: run npm run assets without --materials');
 const atlas=await packs.atlas(`${output}/atlas.png`);
 const manifest:Manifest={atlas,blocks:packs.blocks,lookup:packs.lookup,audio,effects,worlds,missingTextures:[...packs.missing]};
 await writeFile(`${output}/manifest.json`,JSON.stringify(manifest));

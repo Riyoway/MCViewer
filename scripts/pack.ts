@@ -105,12 +105,17 @@ export class Packs {
     }
     if(order.some(frame=>frame<0||frame>=frameCount)){console.warn(`Ignoring out-of-range animation frames: ${path}`);order=order.filter(frame=>frame>=0&&frame<frameCount);}
     if(!order.length)order=[0];
+    // Entity faces such as 14×10 must keep whole texels, rather than unevenly stretching to 32².
+    const size=texture.startsWith('entity/chest/')&&region?[
+      Math.abs(region[2]-region[0])*4,Math.abs(region[3]-region[1])*4
+    ].map(n=>n*Math.floor(30/n)) as [number,number]:undefined;
     const id=this.tiles.length, start=this.images.length;
-    this.tiles.push({start,frames:order.length,ticks});this.tileCache.set(key,id);
+    this.tiles.push({start,frames:order.length,ticks,...(size?{size}:{})});this.tileCache.set(key,id);
     const resized=new Map<number,Buffer>();
     for(const frame of order) {
       if(frame<0 || frame>=frameCount) throw new Error(`Invalid texture frame: ${path}`);
-      if(!resized.has(frame)) resized.set(frame,await sharp(await readFile(path)).extract({...crop,left:frame%columns*frameWidth+crop.left,top:Math.floor(frame/columns)*frameHeight+crop.top}).resize(32,32,{kernel:'nearest'}).extend({top:16,bottom:16,left:16,right:16,extendWith:'copy'}).png().toBuffer());
+      const [w,h]=size??[32,32];
+      if(!resized.has(frame)) resized.set(frame,await sharp(await readFile(path)).extract({...crop,left:frame%columns*frameWidth+crop.left,top:Math.floor(frame/columns)*frameHeight+crop.top}).resize(w,h,{kernel:'nearest'}).extend({top:16+(32-h)/2,bottom:16+(32-h)/2,left:16+(32-w)/2,right:16+(32-w)/2,extendWith:'copy'}).png().toBuffer());
       this.images.push(resized.get(frame)!);
     }
     return id;
@@ -221,7 +226,9 @@ export class Packs {
     }
     const fluidLevel=fluid?Number(props.level??0):props.waterlogged==='true'?0:undefined;
     if(fluidLevel!==undefined&&(!Number.isInteger(fluidLevel)||fluidLevel<0||fluidLevel>15))throw new Error(`Invalid fluid level: ${key}`);
-    const fluidTiles=fluidLevel===undefined?undefined:await Promise.all([`${fluid?name:'water'}_still`,`${fluid?name:'water'}_flow`,...(name==='lava'?[]:['water_overlay'])].map(t=>this.tile(theme,t)));
+    const fluidTiles=fluidLevel===undefined?undefined:[];
+    // Tile allocation mutates the atlas; I/O completion order must not swap Still and Flow IDs.
+    if(fluidTiles)for(const t of [`${fluid?name:'water'}_still`,`${fluid?name:'water'}_flow`,...(name==='lava'?[]:['water_overlay'])])fluidTiles.push(await this.tile(theme,t));
     if(fluid) {
       const tile=fluidTiles![0];
       elements.push({from:[0,0,0],to:[1,1,1],faces:Object.fromEntries(FACES.map(f=>[f,{tile,uv:[0,0,16,16],tint:name==='water'}]))});

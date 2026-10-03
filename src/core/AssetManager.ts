@@ -28,7 +28,7 @@ export class AssetManager {
     this.transparent=material.clone();
     this.transparent.transparent=true;this.transparent.depthWrite=false;
     this.transparent.onBeforeCompile=material.onBeforeCompile;
-    this.transparent.customProgramCacheKey=()=> 'minecraft-atlas-v3';
+    this.transparent.customProgramCacheKey=()=> 'minecraft-atlas-v4';
   }
   static async load() {
     const response=await fetch(assetUrl('manifest.json'));
@@ -43,23 +43,23 @@ export class AssetManager {
       shader.uniforms.daylight=assets.daylight;shader.uniforms.gamma=assets.gamma;
       // Tile IDs must stay exact: interpolation can round into the previous atlas row.
       shader.vertexShader=shader.vertexShader.replace('#include <common>',`#include <common>
-        attribute vec3 tileInfo; attribute float glow; attribute vec2 lightLevel;
-        flat varying vec3 vTileInfo; varying vec2 vPixelUv; varying float vGlow; varying vec2 vLight;`)
+        attribute vec3 tileInfo; attribute vec2 tileSize; attribute float glow; attribute vec2 lightLevel;
+        flat varying vec3 vTileInfo; flat varying vec2 vTileSize; varying vec2 vPixelUv; varying float vGlow; varying vec2 vLight;`)
         .replace('#include <uv_vertex>',`#include <uv_vertex>
-        vTileInfo=tileInfo; vPixelUv=uv; vGlow=glow;vLight=lightLevel;`);
+        vTileInfo=tileInfo; vTileSize=tileSize; vPixelUv=uv; vGlow=glow;vLight=lightLevel;`);
       const {size,cell,pixels}=manifest.atlas,columns=Math.floor(size/cell),padding=(cell-pixels)/2;
       shader.fragmentShader=shader.fragmentShader.replace('#include <common>',`#include <common>
         uniform float voxelTime;${lightmap}
-        flat varying vec3 vTileInfo; varying vec2 vPixelUv; varying float vGlow;varying vec2 vLight;`)
+        flat varying vec3 vTileInfo; flat varying vec2 vTileSize; varying vec2 vPixelUv; varying float vGlow;varying vec2 vLight;`)
         .replace('#include <map_fragment>',`
         float frame=vTileInfo.x+mod(floor(voxelTime*20.0/max(1.0,vTileInfo.z)),max(1.0,vTileInfo.y));
         vec2 tileOrigin=vec2(mod(frame,${columns}.0),floor(frame/${columns}.0))*${cell}.0;
         vec2 pixel=vec2(fract(vPixelUv.x),1.0-fract(vPixelUv.y));
-        vec2 atlasUv=(tileOrigin+vec2(${padding+.5})+pixel*${pixels-1}.0)/${size}.0;
+        vec2 atlasUv=(tileOrigin+vec2(${padding}.0)+(vec2(${pixels}.0)-vTileSize)*.5+pixel*vTileSize)/${size}.0;
         atlasUv.y=1.0-atlasUv.y;
         // Derivatives of unwrapped UVs avoid false mip levels at every fract() seam.
-        vec2 dx=dFdx(vPixelUv)*${pixels-1}.0/${size}.0;
-        vec2 dy=dFdy(vPixelUv)*${pixels-1}.0/${size}.0;
+        vec2 dx=dFdx(vPixelUv)*vTileSize/${size}.0;
+        vec2 dy=dFdy(vPixelUv)*vTileSize/${size}.0;
         float maxFootprint=${cell}.0/${size}.0;
         dx*=min(1.0,maxFootprint/max(length(dx),0.000001));
         dy*=min(1.0,maxFootprint/max(length(dy),0.000001));
@@ -71,7 +71,7 @@ export class AssetManager {
         diffuseColor=sRGBTransferEOTF(diffuseColor);`);
     };
     assets.transparent.onBeforeCompile=material.onBeforeCompile;
-    material.customProgramCacheKey=()=> 'minecraft-atlas-v3';
+    material.customProgramCacheKey=()=> 'minecraft-atlas-v4';
     return assets;
   }
   skinMaterial(texture:Texture) {
@@ -101,11 +101,13 @@ export class AssetManager {
     const geometry=new BufferGeometry();
     const attrs='attributes' in data?data.attributes:[data.position,data.normal,data.uv,data.tile,data.color,data.glow,data.light].map(a=>new Float32Array(a));
     for(const [i,name,size] of [[0,'position',3],[1,'normal',3],[2,'uv',2],[4,'color',3],[5,'glow',1],[6,'lightLevel',2]] as const) geometry.setAttribute(name,new BufferAttribute(attrs[i],size));
-    const info=new Float32Array(attrs[3].length*3);
+    const info=new Float32Array(attrs[3].length*3),size=new Float32Array(attrs[3].length*2);
     for(let i=0;i<attrs[3].length;i++) {
       const tile=this.manifest.atlas.tiles[attrs[3][i]];if(!tile)throw new Error('チャンクと素材のバージョンが一致しません。npm run assets を実行してください。');info[i*3]=tile.start;info[i*3+1]=tile.frames;info[i*3+2]=tile.ticks??1;
+      size.set(tile.size??[this.manifest.atlas.pixels-1,this.manifest.atlas.pixels-1],i*2);
     }
     geometry.setAttribute('tileInfo',new Float32BufferAttribute(info,3));
+    geometry.setAttribute('tileSize',new Float32BufferAttribute(size,2));
     geometry.setIndex(new BufferAttribute('indices' in data?data.indices:new Uint32Array(data.index),1));
     geometry.computeBoundingSphere();geometry.computeBoundingBox();
     const mesh=new Mesh(geometry,transparent?this.transparent:this.opaque);
