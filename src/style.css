@@ -6,3 +6,4 @@
 @media(max-width:580px){#menus{padding:12px}.panel{padding:16px}.panel h1{font-size:20px;margin-bottom:17px}.map{min-height:64px;font-size:14px;gap:12px}.map img{width:74px;height:48px}.map small{font-size:10px}.settings-grid{grid-template-columns:1fr;gap:17px}.slot{width:32px;height:32px}.controls{font-size:10px}.settings{max-height:calc(100dvh - 24px)}}
 @media(max-height:720px){.panel{padding:16px}.panel h1{margin-bottom:14px}.map{min-height:60px}.map img{height:42px;width:66px}.controls{margin-top:12px}}
 #map-menu{display:flex;flex-direction:column}#map-menu>:not(.map-list){flex-shrink:0}.map-list{min-height:0;overflow-y:auto;padding:2px;margin:-2px}
+.weather-note{margin:0;font-size:11px;line-height:1.7;color:#bbb}

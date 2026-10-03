@@ -14,7 +14,7 @@ async function readCompressed(file:string,signal:AbortSignal) {
 }
 export class World {
   readonly root=new Group();readonly voxels=new Voxels();readonly lights=new Voxels();readonly collision:Collision;readonly data:WorldManifest;
-  private loaded=new Map<string,{group:Group;keys:string[]}>();private pending=new Map<string,Promise<void>>();
+  private loaded=new Map<string,{group:Group;keys:string[];surface:Float32Array}>();private pending=new Map<string,Promise<void>>();
   private columns=new Map<string,WorldManifest['chunks'][number]>();private center:Vec3=[0,0,0];private disposed=false;
   private controller=new AbortController();
   private doorMeshes=new Map<string,Mesh>();private doorGeometry=new Map<string,Mesh>();
@@ -41,15 +41,17 @@ export class World {
     const operation=(async()=>{
       const [meshBuffer,voxelBuffer]=await Promise.all([readCompressed(column.file,this.controller.signal),readCompressed(column.voxels,this.controller.signal)]);
       if(this.disposed)return;
-      const group=new Group(),keys=decodeColumn(voxelBuffer,column.origin[0],column.origin[2],this.voxels,this.lights);
+      const group=new Group(),surface=new Float32Array(256).fill(0),keys=decodeColumn(voxelBuffer,column.origin[0],column.origin[2],this.voxels,this.lights);
       decodeMeshes(meshBuffer).forEach((data,i)=>{if(data.indices.length)group.add(this.assets.mesh(data,i===1));});
       for(const chunkKey of keys) {
         const [cx,cy,cz]=chunkKey.split(',').map(Number),cells=this.voxels.chunks.get(chunkKey)!;
-        for(let i=0;i<4096;i++){const id=cells[i],block=this.assets.manifest.blocks[id];if(!block||!/door$/.test(block.name))continue;
+        for(let i=0;i<4096;i++){const id=cells[i],block=this.assets.manifest.blocks[id];if(!block)continue;
+          if(block.solid||block.fluid){const cell=i&255,top=cy*16+(i>>8)+(block.fluid?1:Math.max(0,...block.collision.map(box=>box.to[1])));surface[cell]=Math.max(surface[cell],top);}
+          if(!/door$/.test(block.name))continue;
           const position:Vec3=[cx*16+(i&15),cy*16+(i>>8),cz*16+((i>>4)&15)],door=this.door(id,this.light(...position));door.position.set(...position);group.add(door);this.doorMeshes.set(position.join(','),door);
         }
       }
-      this.loaded.set(key,{group,keys});this.root.add(group);
+      this.loaded.set(key,{group,keys,surface});this.root.add(group);
     })().finally(()=>this.pending.delete(key));
     this.pending.set(key,operation);return operation;
   }
@@ -57,6 +59,10 @@ export class World {
     const X=Math.floor(x),Y=Math.floor(y),Z=Math.floor(z),value=this.lights.get(X,Y,Z);
     // Empty sections above the saved terrain are open sky, including Creative flight.
     return this.lights.chunks.has(`${Math.floor(X/16)},${Math.floor(Y/16)},${Math.floor(Z/16)}`)?value:240;
+  }
+  precipitationSurface(x:number,z:number):number|null {
+    x=Math.floor(x);z=Math.floor(z);
+    return this.loaded.get(`${Math.floor(x/16)},${Math.floor(z/16)}`)?.surface[(z&15)*16+(x&15)]??null;
   }
   private door(id:number,level:number):Mesh {
     const key=`${id}:${level}`;let mesh=this.doorGeometry.get(key);

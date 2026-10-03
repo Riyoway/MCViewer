@@ -14,6 +14,9 @@ import { Player } from '../src/core/Player.ts';
 import { PlayerModel, skinBox } from '../src/core/PlayerModel.ts';
 import { AudioManager } from '../src/core/AudioManager.ts';
 import { Sky } from '../src/world/Sky.ts';
+import { Weather } from '../src/world/Weather.ts';
+import { Climate,precipitation,type WeatherAssets } from '../src/world/Climate.ts';
+import { unpackBiomes } from '../scripts/weather-assets.ts';
 import { unpackPalette } from '../scripts/anvil.ts';
 import { legacyState, doorHalves } from '../scripts/legacy.ts';
 import { Packs } from '../scripts/pack.ts';
@@ -23,6 +26,7 @@ import { fluidHeight, fluidFlow } from '../src/minecraft/Fluid.ts';
 import type { Manifest } from '../src/minecraft/types.ts';
 
 const manifest:Manifest=JSON.parse(await readFile('public/generated/manifest.json','utf8'));
+const weatherAssets:WeatherAssets=JSON.parse(await readFile('public/generated/weather/assets.json','utf8'));
 assert.equal(manifest.missingTextures.length,0);
 const tutorials=JSON.parse(await readFile('minecraft-memory-assets/worlds/templates/tutorial/world_templates.json','utf8')) as {templateLocation:string;downloadURI:string}[];
 assert.equal(Object.keys(manifest.worlds).length,tutorials.length+4,'Every supplied tutorial and all four Mash-ups must be playable');
@@ -35,6 +39,10 @@ for(const block of manifest.blocks) {
 }
 for(const file of [...Object.values(manifest.audio).filter(Boolean),...Object.values(manifest.effects).flat()])assert.equal((await readFile(`public/generated/${file}`)).subarray(0,4).toString(),'OggS');
 for(const [id,world] of Object.entries(manifest.worlds)) {
+  assert(weatherAssets.worlds[id],'Every map includes weather assets');
+  const weatherData=JSON.parse(gunzipSync(await readFile(`public/generated/${weatherAssets.worlds[id].climate}`)).toString());
+  assert(Object.keys(weatherData.columns).length>=2900,'Weather uses the complete map’s saved biome data');
+  const spawnBiome=new Climate(weatherData).at(...world.spawn);assert(spawnBiome&&Number.isFinite(spawnBiome.temperature),'Spawn has a saved biome climate');
   assert(Number.isInteger(world.paintings)&&world.paintings!>=0,'Saved painting counts are retained');
   assert(world.environment?.sun&&world.environment?.moon&&world.environment?.clouds,'Every map has its native sky assets');
   assert(world.blocks>10000000&&world.chunks.length>=2900,'Every map retains its complete original Console area');
@@ -65,6 +73,23 @@ try{
   const cancelled=new World(networkAssets,'test');cancelled.update([0,1,0]);cancelled.dispose();await finishNetwork(cancelled);
   assert(signals.length>0&&signals.every(s=>s.aborted),'Changing maps aborts unnecessary in-flight downloads');assert.equal(cancelled.error,'','Cancelled worlds do not show download errors');
 }finally{globalThis.fetch=realFetch;}
+const climates=[{name:'plains',temperature:.8,precipitation:'rain' as const},{name:'desert',temperature:2,precipitation:'none' as const},{name:'snowy_plains',temperature:0,precipitation:'snow' as const}];
+const climateCells=new Uint8Array(64);climateCells[15]=2;climateCells[31]=1;
+const climate=new Climate({biomes:climates,columns:{'-1,-1':{sections:{4:Buffer.from(climateCells).toString('base64')}}}});
+assert.equal(climate.at(-1,65,-1)?.name,'snowy_plains','Negative coordinates select the correct saved biome');assert.equal(climate.at(-4,70,-4)?.name,'desert','Biome sampling retains the vertical quart coordinate');
+assert.equal(precipitation(climates[0],64),'rain');assert.equal(precipitation(climates[1],64),'none');assert.equal(precipitation(climates[2],64),'snow');assert.equal(precipitation({...climates[0],temperature:.2},140),'snow','High terrain can turn rain into snow');
+const biomeWords=Array<bigint>(6).fill(0n);for(let i=0;i<64;i++)biomeWords[Math.floor(i/12)]|=BigInt(i%17)<<BigInt(i%12*5);
+assert.deepEqual(Array.from(unpackBiomes(biomeWords,17)),Array.from({length:64},(_,i)=>i%17));assert.throws(()=>unpackBiomes([],2));
+const roofCells=new Voxels(),roofBlock=manifest.blocks.findIndex(b=>b?.name==='glass'&&b.theme==='vanilla');assert(roofBlock>0);roofCells.fill([0,0,0],[16,1,16],roofBlock);roofCells.set(8,4,8,roofBlock);
+const roofBuffer=new Uint8Array(encodeColumn(roofCells,[[0,0,0]],()=>240));let roofWorld:World;
+try{globalThis.fetch=async input=>new Response(String(input).endsWith('.vox.gz')?roofBuffer:networkMeshes);roofWorld=new World({...networkAssets,manifest:{...networkAssets.manifest,worlds:{test:{spawn:[8,1,8],chunks:[{origin:[0,0,0],file:'roof.bin.gz',voxels:'roof.vox.gz'}]}}}} as any,'test');await roofWorld.start(()=>{});}finally{globalThis.fetch=realFetch;}
+assert.equal(roofWorld.precipitationSurface(8,8),5,'Even a transparent glass roof stops rainfall');assert.equal(roofWorld.precipitationSurface(7,8),1);assert.equal(roofWorld.precipitationSurface(32,0),null,'Unloaded terrain never emits rain');
+const weather=new Weather({daylight:{value:1}} as any,{worlds:{},sounds:{}},()=>0);Object.assign(weather,{climate:new Climate({biomes:climates,columns:{'0,0':{sections:{0:0}}}})});
+weather.setMode('rain');weather.update(4,new Vector3(8,2.62,8),roofWorld,true);assert(weather.stats.rainColumns>0&&weather.stats.snowColumns===0);assert(weather.stats.sheltered);assert(weather.rain.geometry.getAttribute('position').array.every(Number.isFinite));
+for(let i=0;i<weather.rain.geometry.drawRange.count;i++){const p=weather.rain.geometry.getAttribute('position');assert(p.getY(i)>=roofWorld.precipitationSurface(Math.floor(p.getX(i)),Math.floor(p.getZ(i)))!,'Rain stays above the surface or roof');}
+weather.setMode('snow');weather.update(.1,new Vector3(8,2.62,8),roofWorld,true);assert(weather.stats.snowColumns>0&&weather.stats.rainColumns===0);assert.equal(weather.rainVolume,0,'Snowfall has no rain sound');
+weather.setMode('clear');weather.update(4,new Vector3(8,2.62,8),roofWorld,true);assert.equal(weather.rain.visible,false);assert.equal(weather.snow.visible,false);
+weather.cycle=true;weather.minutes=1;weather.update(60,new Vector3(8,2.62,8),roofWorld,false);assert.equal(weather.mode,'clear','Automatic weather pauses with gameplay');weather.update(60,new Vector3(8,2.62,8),roofWorld,true);assert.equal(weather.mode,'thunder');roofWorld.dispose();
 const packs=new Packs(),stone=await packs.block('vanilla',{Name:'minecraft:stone_bricks'}),slab=await packs.block('vanilla',{Name:'minecraft:oak_slab'});
 const stair=await packs.block('vanilla',{Name:'minecraft:spruce_stairs',Properties:{facing:'east',half:'bottom',shape:'straight',waterlogged:'false'}}),stairKey=`vanilla:${packs.blocks[stair].state}`;
 await packs.block('vanilla',{Name:'minecraft:spruce_stairs',Properties:{facing:'east',half:'bottom',shape:'straight'}});assert.equal(packs.lookup[stairKey],stair,'Older saves with omitted defaults preserve existing canonical state IDs');
@@ -251,4 +276,5 @@ assert.throws(()=>unpackPalette([],17,true));assert.equal(legacyState(5,1).Name,
 const sky=new Sky({daylight:{value:0},time:{value:0}} as any),fog=new Fog('#fff');sky.time=6000;sky.cycle=false;sky.update(10,new Vector3(),fog,true,96);assert.equal(sky.time,6000);assert.equal(sky.brightness,1);
 sky.environment={sky_color:'#3d2300',fog_color:'#e4880b',sun:'',moon:'',clouds:''};sky.update(0,new Vector3(),fog,true,96);assert.equal(fog.color.getHexString(),'e4880b','Halloween keeps the pack’s original orange fog');
 sky.time=18000;sky.update(0,new Vector3(),fog,true,96);assert(sky.brightness<.1);sky.cycle=true;sky.time=0;sky.minutes=20;sky.update(1200,new Vector3(),fog,true,96);assert.equal(sky.time,0);
-console.log('Checks passed: all supplied tutorials and Mash-ups, fluid heights/flow/culling, fence connections/collision, native chest/bed/arm UVs, redstone tint, sky/torch propagation, stored light, doors, stable walking, movement/input, audio, Anvil and day/night.');
+sky.cycle=false;sky.time=6000;sky.update(0,new Vector3(),fog,true,96,{rainLevel:1,thunderLevel:1,flash:0});const stormBrightness=sky.brightness;assert(stormBrightness<.4);assert(fog.far<96,'Rain reduces visibility');sky.update(0,new Vector3(),fog,true,96,{rainLevel:1,thunderLevel:1,flash:1});assert(sky.brightness>stormBrightness,'Lightning briefly lights the sky');
+console.log('Checks passed: all tutorials and Mash-ups, weather climates/roofs/transitions, rain/snow/storm lighting, fluids, fences, native UVs, lighting, doors, movement/input, audio, Anvil and day/night.');

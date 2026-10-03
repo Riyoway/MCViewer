@@ -46,6 +46,13 @@
         <label class="check"><input id="cycle" type="checkbox" checked /> 昼夜サイクル</label>
         <label>1日の長さ <output id="minutes-value">20分</output><input id="minutes" type="range" min="1" max="60" value="20" /></label>
       </fieldset>
+      <fieldset><legend>天候</legend>
+        <label>天候<select id="weather"><option value="clear">晴れ</option><option value="rain">雨</option><option value="thunder">雷雨</option><option value="snow">雪（全域）</option></select></label>
+        <p class="weather-note">雨・雷雨は寒い地域では雪になります。砂漠などには降りません。</p>
+        <label>降水量 <output id="weatherIntensity-value">100%</output><input id="weatherIntensity" type="range" min="0" max="100" value="100" /></label>
+        <label class="check"><input id="weatherCycle" type="checkbox" /> 天候を自動で変える</label>
+        <label>変化の間隔 <output id="weatherMinutes-value">10分</output><input id="weatherMinutes" type="range" min="1" max="30" value="10" /></label>
+      </fieldset>
       <div class="actions"><button id="settings-back">完了</button><button id="reset-settings">初期設定</button></div>
     </section>
     <div id="error" role="alert" hidden></div>

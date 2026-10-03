@@ -37,18 +37,19 @@ export class Sky {
       (mesh.material as MeshBasicMaterial).map=texture;
     }
   }
-  update(dt:number,eye:Vector3,fog:Fog,legacy:boolean,distance:number) {
+  update(dt:number,eye:Vector3,fog:Fog,legacy:boolean,distance:number,weather={rainLevel:0,thunderLevel:0,flash:0}) {
     if(this.cycle)this.time=(this.time+dt*24000/(this.minutes*60))%24000;
-    const angle=this.time/24000*Math.PI*2,elevation=Math.sin(angle),day=Math.max(0,Math.min(1,(elevation+.15)/.35));this.daylight=.08+.92*day;
+    const angle=this.time/24000*Math.PI*2,elevation=Math.sin(angle),day=Math.max(0,Math.min(1,(elevation+.15)/.35)),rain=weather.rainLevel,thunder=weather.thunderLevel;this.daylight=Math.min(1,.08+.92*day*(1-rain*.5)*(1-thunder*.5)+weather.flash*.6);
     this.assets.daylight.value=this.daylight;
     this.root.position.copy(eye);
     const sunrise=Math.pow(1-Math.min(1,Math.abs(elevation)/.22),2),top=this.night.clone().lerp(this.environment?.sky_color?new Color(this.environment.sky_color):this.day,day);
     this.horizon.copy(this.night).lerp(new Color(this.environment?.fog_color??(legacy?'#bbd0dd':'#c0d9ff')),day).lerp(this.dusk,sunrise*.7);
+    for(const color of [top,this.horizon]){const grey=color.r*.3+color.g*.59+color.b*.11;color.lerp(new Color().setRGB(grey*.6,grey*.6,grey*.6),rain*.75).multiplyScalar(1-thunder*.35).lerp(new Color('#d4d9ff'),weather.flash*.55);}
     const uniforms=(this.sphere.material as ShaderMaterial).uniforms;uniforms.top.value.copy(top);uniforms.bottom.value.copy(this.horizon);
-    fog.color.copy(this.horizon);fog.near=distance*(legacy?.35:.6);fog.far=distance;
-    (this.stars.material as PointsMaterial).opacity=(1-day)*.9;this.stars.rotation.z=angle;
-    if(this.sun){this.sun.position.set(Math.cos(angle)*250,elevation*250,0);this.sun.quaternion.setFromUnitVectors(new Vector3(0,0,1),this.sun.position.clone().normalize().negate());this.moon.position.copy(this.sun.position).negate();this.moon.quaternion.setFromUnitVectors(new Vector3(0,0,1),this.moon.position.clone().normalize().negate());}
-    if(this.cloud){this.cloud.visible=this.clouds;this.cloud.position.set(-eye.x%128+this.assets.time.value*.3,128-eye.y,-eye.z%128);(this.cloud.material as MeshBasicMaterial).color.setScalar(.25+.75*day);}
+    fog.color.copy(this.horizon);fog.near=distance*(legacy?.35:.6)*(1-rain*.45);fog.far=distance*(1-rain*.2);
+    (this.stars.material as PointsMaterial).opacity=(1-day)*.9*(1-rain);this.stars.rotation.z=angle;
+    if(this.sun){(this.sun.material as MeshBasicMaterial).opacity=1-rain;(this.moon.material as MeshBasicMaterial).opacity=1-rain;this.sun.position.set(Math.cos(angle)*250,elevation*250,0);this.sun.quaternion.setFromUnitVectors(new Vector3(0,0,1),this.sun.position.clone().normalize().negate());this.moon.position.copy(this.sun.position).negate();this.moon.quaternion.setFromUnitVectors(new Vector3(0,0,1),this.moon.position.clone().normalize().negate());}
+    if(this.cloud){this.cloud.visible=this.clouds;this.cloud.position.set(-eye.x%128+this.assets.time.value*.3,128-eye.y,-eye.z%128);(this.cloud.material as MeshBasicMaterial).color.setScalar((.25+.75*day)*(1-rain*.35)*(1-thunder*.35)+weather.flash*.3);}
   }
   get brightness(){return this.daylight;}
 }

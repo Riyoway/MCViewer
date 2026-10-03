@@ -9,6 +9,7 @@ import type { State } from './anvil.ts';
 import { legacyState, doorHalves } from './legacy.ts';
 import { Packs } from './pack.ts';
 import { rebuildLighting } from './lighting.ts';
+import { prepareWeather } from './weather-assets.ts';
 import { Voxels, encodeColumn, decodeColumn } from '../src/minecraft/Voxels.ts';
 import { meshChunk, emptyMesh, appendElement } from '../src/minecraft/Mesher.ts';
 import { encodeMeshes } from '../src/minecraft/binary.ts';
@@ -144,4 +145,5 @@ if(materialsOnly&&previous&&JSON.stringify(previous.blocks)!==JSON.stringify(pac
 const atlas=await packs.atlas(`${output}/atlas.png`);
 const manifest:Manifest={atlas,blocks:packs.blocks,lookup:packs.lookup,audio,effects,worlds,missingTextures:[...packs.missing]};
 await writeFile(`${output}/manifest.json`,JSON.stringify(manifest));
+await prepareWeather();
 console.log(`Atlas: ${atlas.size}²; ${packs.tiles.length} textures; missing ${packs.missing.size}; unsupported ${packs.unsupported.size}`);
