@@ -294,7 +294,7 @@ export class Packs {
     const sturdyFaces=FACES.reduce((bits,_,i)=>bits|(coversFace(nativeBoxes,i)?1<<i:0),0);
     const block:Block={name,theme,solid,cube,occludes:cube&&solid&&!transparent&&!data?.transparent,transparent,fluid,fluidLevel,fluidTiles,sturdyFaces,emissive,tiles,uvRotations,tinted,tint,elements,rotation,collision,opacity:cube||fluid?(data?.filterLight??0):props.waterlogged==='true'?1:0,light,state:stateKey({Name:state.Name,Properties:props})};
     const id=this.blocks.length;if(id>=65536)throw new Error('Block palette exceeds 16-bit voxel storage');this.blocks.push(block);this.lookup[key]=id;
-    this.lookup[`${theme}:${block.state}`]=id;
+    this.lookup[`${theme}:${block.state}`]??=id;
     if(/door$/.test(name))await this.block(theme,{Name:state.Name,Properties:{...props,open:props.open==='true'?'false':'true'}});
     return id;
   }

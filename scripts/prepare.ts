@@ -2,7 +2,8 @@ import { mkdir, writeFile, readFile, copyFile, rm } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { parse, simplify } from 'prismarine-nbt';
-import { downloadWorld, downloadSound } from './download.ts';
+import { downloadWorld, downloadSound, tutorialWorlds, worldNames } from './download.ts';
+import sharp from 'sharp';
 import { readChunks, unpackPalette, stateKey } from './anvil.ts';
 import type { State } from './anvil.ts';
 import { legacyState, doorHalves } from './legacy.ts';
@@ -15,18 +16,30 @@ import type { Vec3, WorldManifest, Manifest, Block } from '../src/minecraft/type
 
 const output='public/generated';await mkdir(output,{recursive:true});
 const packs=new Packs(),worlds:Record<string,WorldManifest>={};
-const materialsOnly=process.argv.includes('--materials');
-const previous=materialsOnly?JSON.parse(await readFile(`${output}/manifest.json`,'utf8')) as Manifest:undefined;
+const materialsOnly=process.argv.includes('--materials'),append=process.argv.includes('--append');
+if(materialsOnly&&append)throw new Error('Use --append or --materials separately');
+const previous=materialsOnly||append?JSON.parse(await readFile('public/generated/manifest.json','utf8')) as Manifest:undefined;
+if(append&&previous){
+  packs.blocks=previous.blocks;packs.lookup=previous.lookup;packs.tiles=previous.atlas.tiles;Object.assign(worlds,previous.worlds);
+  const {size,cell}=previous.atlas,raw=await sharp('public/generated/atlas.png').ensureAlpha().raw().toBuffer();
+  const count=Math.max(...packs.tiles.map(t=>t.start+t.frames)),columns=size/cell;
+  for(let i=0;i<count;i++){
+    const pixels=Buffer.alloc(cell*cell*4);
+    for(let y=0;y<cell;y++){const start=((Math.floor(i/columns)*cell+y)*size+i%columns*cell)*4;raw.copy(pixels,y*cell*4,start,start+cell*4);}
+    packs.images.push(await sharp(pixels,{raw:{width:cell,height:cell,channels:4}}).png().toBuffer());
+  }
+}
 // The original finite Console maps occupy the central 864×864 blocks.
 // New terrain generated around those saves by their Java conversion is excluded.
 const bounds={min:[-432,0,-432] as Vec3,max:[432,320,432] as Vec3};
-for(const theme of ['tutorial','mario','festive','halloween','chinese'] as const) {
+for(const theme of worldNames) {
+  if(append&&worlds[theme])continue;
   console.log(`Preparing ${theme} exploration map…`);
-  const world=await downloadWorld(theme),pack=theme==='tutorial'?'vanilla':theme;
+  const tutorial=tutorialWorlds.includes(theme),world=await downloadWorld(theme),pack=tutorial?'vanilla':theme;
   const levelFile=Object.entries(world.files).find(([name])=>/level.dat$/.test(name));
   if(!levelFile)throw new Error(`Missing level.dat: ${theme}`);
   const level=simplify((await parse(Buffer.from(levelFile[1]))).parsed).Data;
-  if(theme==='tutorial'&&world.files['icon.png'])await writeFile(`${output}/tutorial-icon.png`,world.files['icon.png']);
+  if(tutorial){const icon=Object.entries(world.files).find(([name])=>/(^|\/)icon.png$/.test(name));await writeFile(`${output}/${theme}-icon.png`,icon?icon[1]:(await downloadWorld('tutorial')).files['icon.png']);}
   const spawn:Vec3=level.spawn?.pos??[level.SpawnX,level.SpawnY,level.SpawnZ];
   const yaw=level.spawn?.yaw??level.SpawnAngle??0;
   const voxels=new Voxels(),lights=new Voxels(),paletteCache=new Map<string,number>();
@@ -105,13 +118,13 @@ for(const theme of ['tutorial','mario','festive','halloween','chinese'] as const
     chunks.push({file,voxels:voxelFile,origin,quads:count});quads+=count;
     if(++done%256===0)console.log(`  ${materialsOnly?'Verified':'Meshed'} ${done}/${columns.size} columns`);
   }
-  let colors:any={};if(theme!=='tutorial')try{colors=JSON.parse(await readFile(`minecraft-memory-assets/resourcepacks/${pack}/assets/legacy/biome_overrides.json`,'utf8')).overrides?.default??{};}catch{/* pack has no overrides */}
+  let colors:any={};if(!tutorial)try{colors=JSON.parse(await readFile(`minecraft-memory-assets/resourcepacks/${pack}/assets/legacy/biome_overrides.json`,'utf8')).overrides?.default??{};}catch{/* pack has no overrides */}
   const environment:NonNullable<WorldManifest['environment']>={sky_color:colors.sky_color,fog_color:colors.fog_color,water_fog_color:colors.water_fog_color,water_fog_distance:colors.water_fog_distance,sun:`${theme}-sun.png`,moon:`${theme}-moon.png`,clouds:`${theme}-clouds.png`};
   for(const [from,to] of [['sun','sun'],['moon_phases','moon'],['clouds','clouds']]){
     const vanilla=`minecraft-memory-assets/references/native-data/1.13/environment/${from}.png`,native=`minecraft-memory-assets/resourcepacks/${pack}/assets/minecraft/textures/environment/${from}.png`;
     try{await copyFile(native,`${output}/${theme}-${to}.png`);}catch{await copyFile(vanilla,`${output}/${theme}-${to}.png`);}
   }
-  worlds[theme]={name:theme==='tutorial'?'Tutorial World · TU14':world.name.replace(' Save',''),source:world.source,checksum:world.checksum,bounds,spawn,yaw,chunks,blocks:total,quads,triangles:quads*2,paintings:paintingCount,environment,unsupported:[...packs.unsupported].filter(s=>s.startsWith(`${pack}:`))};
+  worlds[theme]={name:tutorial?`Tutorial World · TU${theme==='tutorial'?'14':theme.slice(8)}`:world.name.replace(' Save',''),source:world.source,checksum:world.checksum,bounds,spawn,yaw,chunks,blocks:total,quads,triangles:quads*2,paintings:paintingCount,environment,unsupported:[...packs.unsupported].filter(s=>s.startsWith(`${pack}:`))};
   console.log(`  ${total.toLocaleString()} blocks → ${quads.toLocaleString()} quads`);
 }
 await copyFile('minecraft-memory-assets/references/native-data/1.13/entity/steve.png',`${output}/steve.png`);
@@ -121,13 +134,13 @@ const tutorialIcon=(await downloadWorld('tutorial')).files['icon.png'];if(tutori
 const tracks:Record<string,string>={mario:'maintheme',festive:'flake',halloween:'h1',chinese:'02_chang_an_-_perpetual_peace_overworld'};
 const audio:Manifest['audio']={};
 for(const [theme,track] of Object.entries(tracks)){await copyFile(`minecraft-memory-assets/resourcepacks/${theme}/assets/minecraft/sounds/music/${track}.ogg`,`${output}/${theme}.ogg`);audio[theme]=`${theme}.ogg`;}
-await writeFile(`${output}/vanilla.ogg`,await downloadSound('music/game/calm1'));audio.tutorial='vanilla.ogg';
+await writeFile(`${output}/vanilla.ogg`,await downloadSound('music/game/calm1'));for(const name of tutorialWorlds)audio[name]='vanilla.ogg';
 const effects:Manifest['effects']={};await mkdir(`${output}/effects`,{recursive:true});
 for(const group of ['wood','stone','grass','gravel','snow','sand','cloth','swim','door_open','door_close']){
   effects[group]=[];const names=group.startsWith('door_')?[`random/${group}`]:Array.from({length:group==='swim'?2:4},(_,i)=>`${group==='swim'?'liquid':'step'}/${group}${i+1}`);
   for(const name of names){const file=`effects/${name.replaceAll('/','-')}.ogg`;await writeFile(`${output}/${file}`,await downloadSound(name));effects[group].push(file);}
 }
-if(previous&&JSON.stringify(previous.blocks)!==JSON.stringify(packs.blocks))throw new Error('Block geometry or texture IDs changed: run npm run assets without --materials');
+if(materialsOnly&&previous&&JSON.stringify(previous.blocks)!==JSON.stringify(packs.blocks))throw new Error('Block geometry or texture IDs changed: run npm run assets without --materials');
 const atlas=await packs.atlas(`${output}/atlas.png`);
 const manifest:Manifest={atlas,blocks:packs.blocks,lookup:packs.lookup,audio,effects,worlds,missingTextures:[...packs.missing]};
 await writeFile(`${output}/manifest.json`,JSON.stringify(manifest));

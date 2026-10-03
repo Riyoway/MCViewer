@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { gunzipSync } from 'node:zlib';
 import { Vector3, Fog, PerspectiveCamera, MeshBasicMaterial } from 'three';
 import sharp from 'sharp';
 import { Voxels, encodeColumn, decodeColumn } from '../src/minecraft/Voxels.ts';
@@ -21,7 +23,9 @@ import type { Manifest } from '../src/minecraft/types.ts';
 
 const manifest:Manifest=JSON.parse(await readFile('public/generated/manifest.json','utf8'));
 assert.equal(manifest.missingTextures.length,0);
-assert.equal(Object.keys(manifest.worlds).length,5,'All five maps must be playable');
+const tutorials=JSON.parse(await readFile('minecraft-memory-assets/worlds/templates/tutorial/world_templates.json','utf8')) as {templateLocation:string;downloadURI:string}[];
+assert.equal(Object.keys(manifest.worlds).length,tutorials.length+4,'Every supplied tutorial and all four Mash-ups must be playable');
+for(const entry of tutorials){const name=entry.templateLocation.split('/').pop()!.replace('.zip',''),id=name==='tutorial14'?'tutorial':name,world=manifest.worlds[id];assert(world,`Missing ${name}`);assert.equal(world.source,entry.downloadURI);assert.equal(world.checksum.replace(/^0+/,''),new URL(entry.downloadURI).searchParams.get('checksum'));assert.equal(createHash('md5').update(await readFile(`minecraft-memory-assets/worlds/archives/${id}.zip`)).digest('hex'),world.checksum,'Original tutorial ZIP is included and verified');assert.equal(manifest.audio[id],'vanilla.ogg');await sharp(`public/generated/${id}-icon.png`).metadata();}
 assert.equal(Object.keys(manifest.effects).length,10,'Footsteps, swimming and door sounds must ship with the maps');
 for(const block of manifest.blocks) {
   if(block?.fluid){assert.equal(block.cube,false,'Generated liquids use the surface mesher');assert(Number.isInteger(block.fluidLevel)&&block.fluidLevel!>=0&&block.fluidLevel!<=15);assert(block.fluidTiles&&block.fluidTiles.length>=2,'Generated liquids include both Still and Flow');for(const tile of block.fluidTiles)assert(manifest.atlas.tiles[tile]);}
@@ -29,14 +33,24 @@ for(const block of manifest.blocks) {
   if(block&&/^(chest|trapped_chest|ender_chest)$/.test(block.name))for(const e of block.elements)for(const face of Object.values(e.faces))assert(manifest.atlas.tiles[face!.tile].size,'Generated chest faces preserve native texel spacing');
 }
 for(const file of [...Object.values(manifest.audio).filter(Boolean),...Object.values(manifest.effects).flat()])assert.equal((await readFile(`public/generated/${file}`)).subarray(0,4).toString(),'OggS');
-for(const world of Object.values(manifest.worlds)) {
-  assert(world.paintings!>0,'Every map restores saved paintings');
+for(const [id,world] of Object.entries(manifest.worlds)) {
+  assert(Number.isInteger(world.paintings)&&world.paintings!>=0,'Saved painting counts are retained');
   assert(world.environment?.sun&&world.environment?.moon&&world.environment?.clouds,'Every map has its native sky assets');
-  assert(world.blocks>10000000&&world.chunks.length>=2900,'Use the complete original Console map area');
+  assert(world.blocks>10000000&&world.chunks.length>=2900,'Every map retains its complete original Console area');
+  if(!/^tutorial\d+$/.test(id))assert(world.paintings!>0,'The original five maps retain their saved paintings');
   assert(world.quads<world.blocks);assert(world.chunks.every(c=>c.voxels),'Every render column needs actual collision data');
   assert(world.spawn.every(Number.isFinite));
+  assert(world.spawn.every((n,i)=>n>=world.bounds.min[i]&&n<world.bounds.max[i]),'Spawn stays inside the playable area');
+  const spawnColumn=world.chunks.find(c=>c.origin[0]===Math.floor(world.spawn[0]/16)*16&&c.origin[2]===Math.floor(world.spawn[2]/16)*16);assert(spawnColumn,'Spawn has saved terrain and collision data');
+  const meshes=gunzipSync(await readFile(`public/generated/${spawnColumn.file}`)),cells=gunzipSync(await readFile(`public/generated/${spawnColumn.voxels}`));
+  const spawnVoxels=new Voxels(),spawnLight=new Voxels();decodeColumn(cells.buffer.slice(cells.byteOffset,cells.byteOffset+cells.byteLength),spawnColumn.origin[0],spawnColumn.origin[2],spawnVoxels,spawnLight);
+  assert(spawnVoxels.chunks.size>0&&spawnLight.chunks.size===spawnVoxels.chunks.size,'Start area contains terrain and stored light');
+  for(const chunk of spawnVoxels.chunks.values())assert(chunk.every(n=>n===0||!!manifest.blocks[n]),'Start area uses valid block IDs');
+  for(const mesh of decodeMeshes(meshes.buffer.slice(meshes.byteOffset,meshes.byteOffset+meshes.byteLength))){assert(mesh.attributes.every(a=>a.every(Number.isFinite)),'Start area mesh attributes are finite');assert(mesh.attributes[3].every(n=>Number.isInteger(n)&&!!manifest.atlas.tiles[n]),'Start area textures exist in the atlas');assert(mesh.attributes[6].every(n=>n>=0&&n<=1),'Stored mesh light stays within range');}
 }
 const packs=new Packs(),stone=await packs.block('vanilla',{Name:'minecraft:stone_bricks'}),slab=await packs.block('vanilla',{Name:'minecraft:oak_slab'});
+const stair=await packs.block('vanilla',{Name:'minecraft:spruce_stairs',Properties:{facing:'east',half:'bottom',shape:'straight',waterlogged:'false'}}),stairKey=`vanilla:${packs.blocks[stair].state}`;
+await packs.block('vanilla',{Name:'minecraft:spruce_stairs',Properties:{facing:'east',half:'bottom',shape:'straight'}});assert.equal(packs.lookup[stairKey],stair,'Older saves with omitted defaults preserve existing canonical state IDs');
 const voxels=new Voxels();voxels.fill([0,0,0],[2,3,5],stone);
 const mesh=meshChunk(voxels,packs.blocks,[0,0,0]);assert.equal(mesh.opaque.index.length,36);
 for(const [face,shade] of [.6,.6,1,.5,.8,.8].entries())assert(Math.abs(mesh.opaque.color[face*12]-shade)<1e-6,'Native face dimming survives mesh baking');
@@ -218,4 +232,4 @@ assert.throws(()=>unpackPalette([],17,true));assert.equal(legacyState(5,1).Name,
 const sky=new Sky({daylight:{value:0},time:{value:0}} as any),fog=new Fog('#fff');sky.time=6000;sky.cycle=false;sky.update(10,new Vector3(),fog,true,96);assert.equal(sky.time,6000);assert.equal(sky.brightness,1);
 sky.environment={sky_color:'#3d2300',fog_color:'#e4880b',sun:'',moon:'',clouds:''};sky.update(0,new Vector3(),fog,true,96);assert.equal(fog.color.getHexString(),'e4880b','Halloween keeps the pack’s original orange fog');
 sky.time=18000;sky.update(0,new Vector3(),fog,true,96);assert(sky.brightness<.1);sky.cycle=true;sky.time=0;sky.minutes=20;sky.update(1200,new Vector3(),fog,true,96);assert.equal(sky.time,0);
-console.log('Checks passed: five maps, fluid heights/flow/culling, fence connections/collision, native chest/bed/arm UVs, redstone tint, sky/torch propagation, stored light, doors, stable walking, movement/input, audio, Anvil and day/night.');
+console.log('Checks passed: all supplied tutorials and Mash-ups, fluid heights/flow/culling, fence connections/collision, native chest/bed/arm UVs, redstone tint, sky/torch propagation, stored light, doors, stable walking, movement/input, audio, Anvil and day/night.');

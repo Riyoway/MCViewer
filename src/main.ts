@@ -1,7 +1,7 @@
 import './style.css';
 import { Scene, PerspectiveCamera, Fog, Color, NearestFilter, NearestMipmapLinearFilter } from 'three';
 import { createRenderer } from './core/Renderer';
-import { AssetManager } from './core/AssetManager';
+import { AssetManager, assetUrl } from './core/AssetManager';
 import { Player } from './core/Player';
 import { PlayerModel } from './core/PlayerModel';
 import { AudioManager } from './core/AudioManager';
@@ -23,6 +23,11 @@ async function init() {
   const renderer=createRenderer(canvas),scene=new Scene(),camera=new PerspectiveCamera(70,innerWidth/innerHeight,.05,350);
   const fog=new Fog('#bbd0dd',35,96);scene.fog=fog;scene.background=new Color('#89b7ef');scene.add(camera);
   const assets=await AssetManager.load(),sky=new Sky(assets),model=await PlayerModel.create(assets),audio=new AudioManager(assets.manifest.audio,assets.manifest.effects);
+  for(const [name,data] of Object.entries(assets.manifest.worlds)){
+    const button=document.createElement('button'),image=document.createElement('img'),label=document.createElement('span');
+    button.className=`map${name===selected?' selected':''}`;button.dataset.world=name;button.setAttribute('aria-pressed',String(name===selected));
+    image.src=assetUrl(`${name}-icon.png`);image.alt='';label.textContent=data.name;button.append(image,label);$('maps').append(button);
+  }
   await sky.load();scene.add(sky.root,model.root);model.root.visible=false;
   const resize=()=>{const height=config.resolution?Math.min(innerHeight,config.resolution):innerHeight,width=Math.floor(height*innerWidth/innerHeight);renderer.setSize(width,height,false);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();};
   window.addEventListener('resize',resize);

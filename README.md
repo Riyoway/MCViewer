@@ -1,17 +1,17 @@
 # Minecraft Worlds
 
-Three.js + TypeScript + Viteのワールド探索ビューア。展示廊下を廃止し、Tutorial TU14 / Super Mario / Festive / Halloween / Chinese Mythologyの実ワールドに直接入ります。
+Three.js + TypeScript + Viteのワールド探索ビューア。Tutorial TU1 / TU3 / TU5 / TU7 / TU9 / TU12 / TU14 / TU19 / TU31 / TU46と、Super Mario / Festive / Halloween / Chinese Mythologyの実ワールドに直接入ります。
 
 ## 起動
 
-Node.js 22.12以上。生成済みの素材・5マップと、再生成に必要なResource Pack・参照素材・元のワールドZIPをリポジトリに収録しています。
+Node.js 22.12以上。生成済みの素材・14マップと、再生成に必要なResource Pack・参照素材・元のワールドZIPをリポジトリに収録しています。
 
 ```sh
 npm ci
 npm run dev
 ```
 
-マップ選択画面で読み込みが終わったら「プレイ」を押してください。素材やメッシュを変更したときは`npm run assets`で全マップを再生成します。収録した元ZIPのMD5を配布定義と照合し、元ZIPがないときは従来のキャッシュ・ダウンロードを使用します。再生成には約20分かかります。
+マップ選択画面で読み込みが終わったら「プレイ」を押してください。素材やメッシュを変更したときは`npm run assets`で全マップを再生成します。未生成のマップだけ追加する場合は`npm run assets -- --append`を使えます。収録した元ZIPのMD5を配布定義と照合し、元ZIPがないときは従来のキャッシュ・ダウンロードを使用してリポジトリに保存します。全マップの再生成には数十分かかります。
 
 ```sh
 npm test

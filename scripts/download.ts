@@ -5,6 +5,10 @@ import { unzipSync } from 'fflate';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+const tutorials=JSON.parse(await readFile('minecraft-memory-assets/worlds/templates/tutorial/world_templates.json','utf8')) as {templateLocation:string;folderName:string;downloadURI:string}[];
+export const tutorialWorlds=tutorials.map(t=>t.templateLocation.split('/').pop()!.replace('.zip','')).map(id=>id==='tutorial14'?'tutorial':id);
+export const worldNames=['tutorial','mario','festive','halloween','chinese',...tutorialWorlds.filter(id=>id!=='tutorial')];
+
 export async function fetchBytes(url: string): Promise<Buffer> {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(25000) });
@@ -41,19 +45,21 @@ export async function downloadSound(name:string) {
 }
 if(process.argv.includes('--sound-list'))console.log(Object.keys(await vanillaSoundIndex()).filter(s=>/sounds\/(step|random\/door|block\/wooden_door|liquid\/swim)/.test(s)).join('\n'));
 
-export async function downloadWorld(theme: 'mario' | 'tutorial' | 'festive' | 'halloween' | 'chinese') {
-  const source = theme !== 'tutorial'
+export async function downloadWorld(theme:string) {
+  if(!worldNames.includes(theme))throw new Error(`Unknown world: ${theme}`);
+  const source = !tutorialWorlds.includes(theme)
     ? 'minecraft-memory-assets/worlds/templates/legacy/world_templates.json'
     : 'minecraft-memory-assets/worlds/templates/tutorial/world_templates.json';
-  const templates = JSON.parse(await readFile(source, 'utf8'));
-  const template = {mario:'super_mario',tutorial:'tutorial14',festive:'festive',halloween:'halloween',chinese:'chinese_mythology'}[theme];
-  const entry = templates.find((t: { templateLocation: string }) => t.templateLocation.includes(template));
+  const templates = tutorialWorlds.includes(theme)?tutorials:JSON.parse(await readFile(source, 'utf8'));
+  const template = ({mario:'super_mario',tutorial:'tutorial14',chinese:'chinese_mythology'} as Record<string,string>)[theme]??theme;
+  const entry = templates.find((t: { templateLocation: string }) => t.templateLocation.split('/').pop()===`${template}.zip`);
   if (!entry) throw new Error(`Missing world template: ${theme}`);
   await mkdir('.cache', { recursive: true });
   const path = `.cache/${theme}.zip`;
-  let data: Buffer;
-  try { data = await readFile(`minecraft-memory-assets/worlds/archives/${theme}.zip`); }
+  const archive=`minecraft-memory-assets/worlds/archives/${theme}.zip`;let data:Buffer,archived=true;
+  try { data = await readFile(archive); }
   catch {
+    archived=false;
     try{data=await readFile(path);}catch{
       console.log(`Downloading ${entry.folderName} from supplied template…`);
       data = await fetchBytes(entry.downloadURI);
@@ -66,6 +72,7 @@ export async function downloadWorld(theme: 'mario' | 'tutorial' | 'festive' | 'h
   if (expected && checksum.replace(/^0+/, '') !== expected.replace(/^0+/, '')) {
     throw new Error(`World checksum mismatch: ${theme}. Restore the supplied ZIP or delete ${path} and retry.`);
   }
+  if(!archived){await mkdir(dirname(archive),{recursive:true});await writeFile(archive,data);}
   return { files: unzipSync(data), source: entry.downloadURI, checksum, name: entry.folderName };
 }
 
