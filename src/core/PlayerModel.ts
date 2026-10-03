@@ -28,7 +28,7 @@ export class PlayerModel {
     model.head.position.y=1;model.upper.add(model.head);model.root.scale.setScalar(.9);
     const head=skinBox(8,8,8,0,0,material,width,height);model.head.add(head);
     const handMaterial=assets.skinMaterial(texture);handMaterial.depthTest=false;handMaterial.depthWrite=false;handMaterial.transparent=true;
-    const hand=skinBox(4,12,4,40,16,handMaterial,width,height);hand.scale.y=-1;hand.position.set(-6/16,6/16,0);model.hand.renderOrder=1000;
+    const hand=skinBox(4,12,4,40,16,handMaterial,width,height);hand.scale.y=-1;hand.position.set(-6/16,6/16,0);hand.renderOrder=1000;
     // ItemInHandRenderer's resting right arm, including its native model pivot.
     const pose=new Group();pose.matrixAutoUpdate=false;
     pose.matrix.makeTranslation(-1,3.6,3.5)
