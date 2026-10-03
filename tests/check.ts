@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
+import { setImmediate as flush } from 'node:timers/promises';
 import { Vector3, Fog, PerspectiveCamera, MeshBasicMaterial } from 'three';
 import sharp from 'sharp';
 import { Voxels, encodeColumn, decodeColumn } from '../src/minecraft/Voxels.ts';
@@ -48,6 +49,22 @@ for(const [id,world] of Object.entries(manifest.worlds)) {
   for(const chunk of spawnVoxels.chunks.values())assert(chunk.every(n=>n===0||!!manifest.blocks[n]),'Start area uses valid block IDs');
   for(const mesh of decodeMeshes(meshes.buffer.slice(meshes.byteOffset,meshes.byteOffset+meshes.byteLength))){assert(mesh.attributes.every(a=>a.every(Number.isFinite)),'Start area mesh attributes are finite');assert(mesh.attributes[3].every(n=>Number.isInteger(n)&&!!manifest.atlas.tiles[n]),'Start area textures exist in the atlas');assert(mesh.attributes[6].every(n=>n>=0&&n<=1),'Stored mesh light stays within range');}
 }
+const networkMeshes=new Uint8Array(encodeMeshes({opaque:emptyMesh(),transparent:emptyMesh()}));
+const networkColumns=Array.from({length:49},(_,i)=>{const x=(i%7-3)*16,z=(Math.floor(i/7)-3)*16;return{origin:[x,0,z],file:`test/${x}_${z}.bin.gz`,voxels:`test/${x}_${z}.vox.gz`};});
+const networkAssets={manifest:{blocks:manifest.blocks,worlds:{test:{spawn:[0,1,0],chunks:networkColumns}}}} as any;
+const realFetch=globalThis.fetch;let downloads=0;
+const finishNetwork=async(w:World)=>{for(let i=0;i<50&&w.stats.pending;i++)await flush();assert.equal(w.stats.pending,0,'World requests settle after failure or disposal');};
+try{
+  globalThis.fetch=async(input)=>{downloads++;const file=String(input),column=networkColumns.find(c=>file.endsWith(c.voxels));return new Response(column?new Uint8Array(encodeColumn(new Voxels(),[column.origin as any],()=>240)):networkMeshes);};
+  const preview=new World(networkAssets,'test');await preview.start(()=>{});for(let i=0;i<30;i++)preview.update([0,1,0],1);await finishNetwork(preview);
+  assert.equal(preview.stats.loaded,9);assert.equal(downloads,18,'Map selection fetches only nine render/collision columns');preview.dispose();
+  downloads=0;globalThis.fetch=async()=>{downloads++;return new Response('Bandwidth exhausted',{status:429});};
+  const failed=new World(networkAssets,'test');failed.update([0,1,0]);await finishNetwork(failed);const failedDownloads=downloads;
+  assert(failed.error);for(let i=0;i<120;i++)failed.update([0,1,0]);await finishNetwork(failed);assert.equal(downloads,failedDownloads,'A CDN failure never starts a per-frame retry loop');failed.dispose();
+  const signals:AbortSignal[]=[];globalThis.fetch=async(_input,options)=>new Promise((_resolve,reject)=>{const signal=options!.signal!;signals.push(signal);signal.addEventListener('abort',()=>reject(new DOMException('Cancelled','AbortError')),{once:true});});
+  const cancelled=new World(networkAssets,'test');cancelled.update([0,1,0]);cancelled.dispose();await finishNetwork(cancelled);
+  assert(signals.length>0&&signals.every(s=>s.aborted),'Changing maps aborts unnecessary in-flight downloads');assert.equal(cancelled.error,'','Cancelled worlds do not show download errors');
+}finally{globalThis.fetch=realFetch;}
 const packs=new Packs(),stone=await packs.block('vanilla',{Name:'minecraft:stone_bricks'}),slab=await packs.block('vanilla',{Name:'minecraft:oak_slab'});
 const stair=await packs.block('vanilla',{Name:'minecraft:spruce_stairs',Properties:{facing:'east',half:'bottom',shape:'straight',waterlogged:'false'}}),stairKey=`vanilla:${packs.blocks[stair].state}`;
 await packs.block('vanilla',{Name:'minecraft:spruce_stairs',Properties:{facing:'east',half:'bottom',shape:'straight'}});assert.equal(packs.lookup[stairKey],stair,'Older saves with omitted defaults preserve existing canonical state IDs');
@@ -214,6 +231,8 @@ press('Space');assert.equal(inputPlayer.movement.flying,false);
 press('F5');assert.equal(inputPlayer.perspective,1);press('KeyV');assert.equal(inputPlayer.perspective,2);
 press('Escape');assert.equal(inputPlayer.locked,false);assert.equal(inputPlayer.keys.size,0);
 
+const realAudio=globalThis.Audio;let musicPreload='',cancelledMusic=0;
+try{Object.assign(globalThis,{Audio:class extends EventTarget{loop=false;volume=0;preload='auto';constructor(readonly src:string){super();}pause(){}removeAttribute(){}load(){cancelledMusic++;}}});const selectingAudio=new AudioManager({one:'vanilla.ogg',two:'mario.ogg'});selectingAudio.select('one');musicPreload=(selectingAudio as any).track.preload;selectingAudio.select('two');assert.equal(musicPreload,'none','Map selection does not preload music');assert.equal(cancelledMusic,1,'Changing maps stops the previous music download');}finally{globalThis.Audio=realAudio;}
 let effectStarts=0,rejectMusic=true;
 const music={volume:0,paused:true,async play(){if(rejectMusic)throw new Error('Playback blocked');this.paused=false;},pause(){this.paused=true;}};
 Object.assign(globalThis,{AudioContext:class{state='running';destination={};async resume(){}createBufferSource(){return {playbackRate:{value:1},connect(){},disconnect(){},start(){effectStarts++;}};}createGain(){return {gain:{value:1},connect(){},disconnect(){}};}}});

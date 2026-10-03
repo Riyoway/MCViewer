@@ -6,8 +6,8 @@ import { AssetManager, assetUrl } from '../core/AssetManager';
 import { Collision } from '../core/Collision';
 import type { WorldManifest, Vec3 } from './types';
 
-async function readCompressed(file:string) {
-  const response=await fetch(assetUrl(file));if(!response.ok)throw new Error(`チャンクを読み込めません: ${file}`);
+async function readCompressed(file:string,signal:AbortSignal) {
+  const response=await fetch(assetUrl(file),{signal});if(!response.ok)throw new Error(`チャンクを読み込めません: ${file}`);
   let buffer=await response.arrayBuffer();const bytes=new Uint8Array(buffer);
   if(bytes[0]===31&&bytes[1]===139)buffer=await new Response(new Blob([buffer]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
   return buffer;
@@ -16,6 +16,7 @@ export class World {
   readonly root=new Group();readonly voxels=new Voxels();readonly lights=new Voxels();readonly collision:Collision;readonly data:WorldManifest;
   private loaded=new Map<string,{group:Group;keys:string[]}>();private pending=new Map<string,Promise<void>>();
   private columns=new Map<string,WorldManifest['chunks'][number]>();private center:Vec3=[0,0,0];private disposed=false;
+  private controller=new AbortController();
   private doorMeshes=new Map<string,Mesh>();private doorGeometry=new Map<string,Mesh>();
   radius=6;error='';
   constructor(readonly assets:AssetManager,readonly name:string) {
@@ -26,8 +27,8 @@ export class World {
   }
   async start(progress:(done:number,total:number)=>void) {
     this.center=[...this.data.spawn];let next=0,done=0;const initial=this.nearby(1);
-    await Promise.all(Array.from({length:4},async()=>{while(next<initial.length){await this.load(initial[next++]);progress(++done,initial.length);}}));
-    this.update(this.center);
+    try{await Promise.all(Array.from({length:4},async()=>{while(next<initial.length){await this.load(initial[next++]);progress(++done,initial.length);}}));}
+    catch(error){this.error=String(error);this.controller.abort();throw error;}
   }
   private nearby(radius:number):string[] {
     const x=Math.floor(this.center[0]/16),z=Math.floor(this.center[2]/16),keys:string[]=[];
@@ -38,7 +39,7 @@ export class World {
     if(this.loaded.has(key))return Promise.resolve();if(this.pending.has(key))return this.pending.get(key)!;
     const column=this.columns.get(key)!;
     const operation=(async()=>{
-      const [meshBuffer,voxelBuffer]=await Promise.all([readCompressed(column.file),readCompressed(column.voxels)]);
+      const [meshBuffer,voxelBuffer]=await Promise.all([readCompressed(column.file,this.controller.signal),readCompressed(column.voxels,this.controller.signal)]);
       if(this.disposed)return;
       const group=new Group(),keys=decodeColumn(voxelBuffer,column.origin[0],column.origin[2],this.voxels,this.lights);
       decodeMeshes(meshBuffer).forEach((data,i)=>{if(data.indices.length)group.add(this.assets.mesh(data,i===1));});
@@ -77,10 +78,10 @@ export class World {
     }
     return null;
   }
-  update(position:readonly number[]) {
-    if(this.disposed)return;this.center=[position[0],position[1],position[2]];
-    const wanted=new Set(this.nearby(this.radius));
-    for(const key of wanted){if(this.pending.size>=4)break;if(!this.loaded.has(key)&&!this.pending.has(key))void this.load(key).catch(e=>{this.error=String(e);});}
+  update(position:readonly number[],radius=this.radius) {
+    if(this.disposed||this.error)return;this.center=[position[0],position[1],position[2]];
+    const wanted=new Set(this.nearby(radius));
+    for(const key of wanted){if(this.pending.size>=4)break;if(!this.loaded.has(key)&&!this.pending.has(key))void this.load(key).catch(e=>{if(!this.disposed&&!this.error){this.error=String(e);this.controller.abort();}});}
     const cx=Math.floor(position[0]/16),cz=Math.floor(position[2]/16);
     for(const [key,value] of this.loaded) {
       const [x,z]=key.split(',').map(Number),distance=Math.hypot(x-cx,z-cz);value.group.visible=distance<=this.radius+.5;
@@ -90,6 +91,6 @@ export class World {
   private release(group:Group) {
     group.traverse(object=>{if(object instanceof Mesh){if(!object.userData.door)object.geometry.dispose();else this.doorMeshes.delete(object.position.toArray().join(','));}});
   }
-  dispose(){this.disposed=true;for(const {group} of this.loaded.values())this.release(group);for(const mesh of this.doorGeometry.values())mesh.geometry.dispose();this.loaded.clear();this.voxels.chunks.clear();this.lights.chunks.clear();this.root.clear();}
+  dispose(){this.disposed=true;this.controller.abort();for(const {group} of this.loaded.values())this.release(group);for(const mesh of this.doorGeometry.values())mesh.geometry.dispose();this.loaded.clear();this.voxels.chunks.clear();this.lights.chunks.clear();this.root.clear();}
   get stats(){return {loaded:this.loaded.size,pending:this.pending.size,sections:this.voxels.chunks.size};}
 }

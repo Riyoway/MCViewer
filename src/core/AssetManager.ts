@@ -3,7 +3,9 @@ import type { Texture } from 'three';
 import type { Manifest, MeshData } from '../minecraft/types';
 import type { PackedMesh } from '../minecraft/binary';
 
-export const assetUrl=(file:string)=>`${import.meta.env.BASE_URL}generated/${file}`;
+const external=import.meta.env?.VITE_ASSET_BASE_URL,base=(external||`${import.meta.env?.BASE_URL??'/'}generated`).replace(/\/$/,'');
+const version=typeof __ASSET_VERSION__==='undefined'?'local':__ASSET_VERSION__;
+export const assetUrl=(file:string)=>`${base}/${!external&&import.meta.env?.PROD?`${version}/`:''}${file}`;
 // Mojang's lightmap.fsh: independent sky/block light, warm block-light curve and Gamma.
 const lightmap=`uniform float daylight;uniform float gamma;
 vec3 minecraftLight(vec2 level,float glow) {

@@ -83,4 +83,10 @@ Entityのテクスチャは面ごとの領域を切り出してからアトラ�
 
 `Riyoway/mineconsole`の`main`はVercelの`mineconsole`プロジェクトに接続済みです。`vercel.json`でVite・`npm ci`・`npm run build`・`dist`を指定しています。検証後にmainへpushすると自動デプロイされ、公開先は https://mineconsole.vercel.app です。
 
-生成済みの`public/generated/`をcommitするため、Vercel側で長時間のマップ変換は実行しません。素材の更新をブラウザが古いまま保持しないよう、生成素材は再検証するCache-Controlを指定しています。CLIから全素材を直接アップロードする方法は[Vercelのアップロード容量・ファイル数制限](https://vercel.com/docs/limits)に当たるため、このプロジェクトはGit連携からデプロイします。
+生成済みの`public/generated/`をcommitするため、Vercel側で長時間のマップ変換は実行しません。ビルド時に素材を`dist/generated/<素材を変更したcommit>/`へ配置し、URLが同じ間は1年間ブラウザでキャッシュします。素材を更新するとURLが変わり、古いManifestと新しい地形が混ざることを防ぎます。旧バージョンのページで未取得の素材がなくなった場合は、再読み込みが必要です。CLIから全素材を直接アップロードする方法は[Vercelのアップロード容量・ファイル数制限](https://vercel.com/docs/limits)に当たるため、このプロジェクトはGit連携からデプロイします。
+
+マップ選択中は開始地点の9列だけを取得し、プレイ中に設定した描画距離まで読み込みます。BGMは再生操作まで先読みしません。マップ変更時に不要になった地形の通信を中断し、読み込みエラー後は連続した再取得を止めます。
+
+VercelのDeployment Storageは、保持しているデプロイのビルド出力・静的素材の保存容量です。Hobbyのチーム枠は10GBで、直近3件のProductionなどは自動削除の対象から外れます。素材を外部に分けると新しいデプロイは小さくなりますが、既存のデプロイの容量は残ります。ブラウザキャッシュや先読みの削減は通信量の対策であり、保存容量は減らしません。[Deployment Storage](https://vercel.com/docs/deployment-storage)・[Hobbyの保持ルール](https://vercel.com/changelog/hobby-projects-now-retain-fewer-deployments-to-free-up-storage)
+
+ワールド素材をCloudflare R2などへ分ける場合は、通常ビルドで生成した`dist/generated/`の中身を公開ストレージへ配置し、CORSでアプリのOriginを許可します。Vercelの環境変数に`VITE_ASSET_BASE_URL=https://assets.example.com/generated/<バージョン>`を設定すると、素材をそのURLから直接読み込み、Vercelのビルド出力には含めません。この構成の出力は約523KBです。素材を更新して別バージョンをアップロードした際は、このURLも変更します。Vercel経由のProxyやRewriteは使用しません。ストレージ側にもバージョン付きURLの長期Cache-Controlを設定してください。R2はStandardの無料枠に10GBの保存容量・月1,000万回の読み込みが含まれ、インターネットへの転送は無料ですが、操作・保存容量の超過は別途課金されます。[R2料金](https://developers.cloudflare.com/r2/pricing/)

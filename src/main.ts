@@ -89,7 +89,7 @@ async function init() {
   renderer.setAnimationLoop(time=>{
     const dt=Math.min((time-last)/1000,.1);last=time;if(document.hidden)return;
     elapsed+=dt;assets.time.value=elapsed;
-    if(player&&world&&worldReady){if(player.locked)player.update(dt);world.update(player.position);if(player.position[1]<-20)spawn();if(world.error&&error.hidden){if(player.locked)document.exitPointerLock();report(world.error);}}
+    if(player&&world&&worldReady){if(player.locked)player.update(dt);world.update(player.position,player.locked?world.radius:1);if(player.position[1]<-20)spawn();if(world.error&&error.hidden){if(player.locked)document.exitPointerLock();report(world.error);}}
     if(player&&world&&worldReady){
       const p=player.position,m=player.movement,distance=stepPosition?Math.hypot(p[0]-stepPosition[0],p[2]-stepPosition[2]):0;
       if(distance>2)stepDistance=0;else stepDistance+=distance;
