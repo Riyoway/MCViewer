@@ -2,6 +2,13 @@ import type { MeshData } from './types';
 const attributes = ['position','normal','uv','tile','color','glow','light'] as const;
 export const sizes = [3,3,2,1,3,1,2];
 export interface PackedMesh { attributes: Float32Array[]; indices: Uint32Array }
+// Baked quads never merge across 16-block vertical section boundaries. The inward
+// normal disambiguates horizontal faces exactly on a boundary. Paintings stay baked.
+export function triangleSections(data:PackedMesh,terrainTiles:Set<number>):Int16Array {
+  const result=new Int16Array(data.indices.length/3),p=data.attributes[0],n=data.attributes[1];
+  for(let i=0;i<result.length;i++){const vertices=data.indices.subarray(i*3,i*3+3);result[i]=terrainTiles.has(data.attributes[3][vertices[0]])?Math.floor(vertices.reduce((sum,v)=>sum+p[v*3+1]-n[v*3+1]*.001,0)/48):-32768;}
+  return result;
+}
 export function selectTriangles(data:PackedMesh,keep:(tile:number)=>boolean):PackedMesh {
   const remap=new Map<number,number>(),indices:number[]=[],values=sizes.map(()=>[] as number[]);
   for(let i=0;i<data.indices.length;i+=3)if(keep(data.attributes[3][data.indices[i]]))for(const old of data.indices.subarray(i,i+3)){

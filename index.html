@@ -23,7 +23,14 @@
       <button id="resume">ゲームに戻る</button>
       <button id="pause-settings">設定</button>
       <button id="respawn">スポーン地点に戻る</button>
+      <button id="reset-map">マップをリセット</button>
       <button id="change-map">ワールド選択</button>
+    </section>
+    <section id="reset-menu" class="panel" role="dialog" aria-modal="true" aria-labelledby="reset-title" hidden>
+      <h1 id="reset-title">マップをリセットしますか？</h1>
+      <p id="reset-map-name"></p>
+      <p>設置・破壊したブロックとドアの状態を元に戻します。この操作は取り消せません。</p>
+      <div class="actions"><button id="confirm-reset">リセット</button><button id="cancel-reset">キャンセル</button></div>
     </section>
     <section id="settings-menu" class="panel settings" hidden>
       <h1>設定</h1>

@@ -25,7 +25,7 @@ try{const saved=JSON.parse(localStorage.getItem('world-settings')??'{}');for(con
 if(![0,480,720].includes(config.resolution))config.resolution=defaults.resolution;
 if(!['clear','rain','thunder','snow'].includes(config.weather))config.weather='clear';
 let world:World|null=null,player:Player|null=null,selected='tutorial',entered=false,request=0,ui='map-menu',settingsReturn='map-menu',debug=false,worldReady=false;
-function menu(id:string){ui=id;for(const panel of ['map-menu','pause-menu','settings-menu'])$(panel).hidden=panel!==id;}
+function menu(id:string){ui=id;for(const panel of ['map-menu','pause-menu','settings-menu','reset-menu'])$(panel).hidden=panel!==id;}
 function report(cause:unknown){error.hidden=false;error.textContent=cause instanceof Error?cause.message:cause instanceof Event?'画像を読み込めません。ページを再読み込みしてください。':String(cause);}
 async function init() {
   const renderer=createRenderer(canvas),scene=new Scene(),camera=new PerspectiveCamera(70,innerWidth/innerHeight,.05,350);
@@ -85,12 +85,16 @@ async function init() {
   const play=()=>{if(!player)return;ui='playing';void player.lock().catch(cause=>{menu(entered?'pause-menu':'map-menu');report(cause);});void audio.start().catch(cause=>report(`音声を再生できません: ${cause}`));};
   enter.addEventListener('click',play);$('resume').addEventListener('click',play);
   $('respawn').addEventListener('click',()=>{spawn();play();});
+  $('reset-map').addEventListener('click',()=>{if(!worldReady||!world)return;$('reset-map-name').textContent=world.data.name;menu('reset-menu');$('cancel-reset').focus();});
+  const cancelReset=()=>{menu('pause-menu');$('reset-map').focus();};
+  $('cancel-reset').addEventListener('click',cancelReset);
+  $('confirm-reset').addEventListener('click',()=>{if(!worldReady||!world)return;world.edits.clear();menu('map-menu');void choose(selected);});
   $('change-map').addEventListener('click',()=>{entered=false;menu('map-menu');document.exitPointerLock();enter.focus();});
   window.addEventListener('wheel',event=>{if(player?.locked){event.preventDefault();hud.select(hud.inventory.selected+Math.sign(event.deltaY));}},{passive:false});
   const controls=new CreativeControls(()=>{
     if(!player?.locked||!world||!worldReady)return;model.swing();const hit=world.target(player.eye.toArray(),player.look.toArray());
     if(!hit||hud.selectedItem?.id.endsWith('_sword'))return;const block=assets.manifest.blocks[hit.id],light=world.light(...hit.position);
-    if(world.destroy(hit)){debris.break(hit,light);audio.effect(`dig_${soundGroup(block.name)}`,1,.8);}
+    if(world.destroy(hit)){debris.break(hit,light,world);audio.effect(`dig_${soundGroup(block.name)}`,1,.8);}
   },()=>{
     if(!player?.locked||!world||!worldReady)return;
     const sneaking=player.keys.has('ShiftLeft')||player.keys.has('ShiftRight'),hit=world.target(player.eye.toArray(),player.look.toArray());if(!hit)return;
@@ -105,6 +109,7 @@ async function init() {
     if(hud.open){if(hud.key(event)==='close'&&!event.repeat){event.preventDefault();hud.hide();play();}return;}
     if(player?.locked){if(event.code==='KeyE'&&!event.repeat){event.preventDefault();ui='inventory';hud.show();document.exitPointerLock();}if(event.code==='F3'){event.preventDefault();debug=!debug;$('debug').hidden=!debug;}if(/^Digit[1-9]$/.test(event.code))hud.select(Number(event.code.slice(-1))-1);}
     else if(event.code==='Escape'&&ui==='settings-menu')menu(settingsReturn);
+    else if(event.code==='Escape'&&ui==='reset-menu')cancelReset();
   });
   canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();document.exitPointerLock();report('描画が中断されました。ページを再読み込みしてください。');});
   applySettings();let last=performance.now(),elapsed=0,frames=0,fps=0,fpsTime=0,stepPosition:number[]|null=null,stepDistance=0,wasGrounded=false;

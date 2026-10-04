@@ -53,6 +53,21 @@ export class Collision {
     });
     position[1]=target;return Math.abs(target-y-dy)>.00001;
   }
+  particleMove(position:Vec3,velocity:Vec3):Vec3 {
+    // Native particles clip a .2 x .2 AABB in Y, then the larger horizontal axis.
+    const min:Vec3=[position[0]-.1,position[1],position[2]-.1],max:Vec3=[position[0]+.1,position[1]+.2,position[2]+.1];
+    const boxes:{min:Vec3;max:Vec3}[]=[],delta=[...velocity] as Vec3;
+    this.each(min.map((n,i)=>n+Math.min(0,delta[i])) as Vec3,max.map((n,i)=>n+Math.max(0,delta[i])) as Vec3,(a,b)=>boxes.push({min:a,max:b}));
+    for(const axis of Math.abs(delta[0])<Math.abs(delta[2])?[1,2,0]:[1,0,2]){
+      const a=(axis+1)%3,b=(axis+2)%3;
+      for(const box of boxes)if(min[a]<box.max[a]&&max[a]>box.min[a]&&min[b]<box.max[b]&&max[b]>box.min[b]){
+        if(delta[axis]>0&&max[axis]<=box.min[axis])delta[axis]=Math.min(delta[axis],box.min[axis]-max[axis]);
+        else if(delta[axis]<0&&min[axis]>=box.max[axis])delta[axis]=Math.max(delta[axis],box.max[axis]-min[axis]);
+      }
+      min[axis]+=delta[axis];max[axis]+=delta[axis];
+    }
+    return delta;
+  }
   point(x:number,y:number,z:number):boolean {
     let hit=false;this.each([x-.08,y-.08,z-.08],[x+.08,y+.08,z+.08],(a,b)=>{if(x+.08>a[0]&&x-.08<b[0]&&y+.08>a[1]&&y-.08<b[1]&&z+.08>a[2]&&z-.08<b[2])hit=true;});return hit;
   }

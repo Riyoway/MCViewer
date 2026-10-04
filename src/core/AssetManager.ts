@@ -112,16 +112,20 @@ export class AssetManager {
     }
     geometry.setAttribute('tileInfo',new Float32BufferAttribute(info,3));
     geometry.setAttribute('tileSize',new Float32BufferAttribute(size,2));
-    let indices='indices' in data?data.indices:new Uint32Array(data.index),materials:MeshBasicMaterial|MeshBasicMaterial[]=transparent?this.transparent:this.opaque;
-    if(transparent){
-      const cutout:number[]=[],blend:number[]=[];
-      for(let i=0;i<indices.length;i+=3)(this.cutoutTiles.has(attrs[3][indices[i]])?cutout:blend).push(indices[i],indices[i+1],indices[i+2]);
-      if(cutout.length){indices=new Uint32Array([...cutout,...blend]);geometry.addGroup(0,cutout.length,0);if(blend.length)geometry.addGroup(cutout.length,blend.length,1);materials=[this.opaque,this.transparent];}
-    }
-    geometry.setIndex(new BufferAttribute(indices,1));
+    const mesh=new Mesh(geometry,this.opaque);
+    this.updateIndices(mesh,'indices' in data?data.indices:new Uint32Array(data.index),attrs[3],transparent);
     geometry.computeBoundingSphere();geometry.computeBoundingBox();
-    const mesh=new Mesh(geometry,materials);
     mesh.frustumCulled=true;
     return mesh;
+  }
+  updateIndices(mesh:Mesh,indices:Uint32Array,tiles:Float32Array,transparent=false){
+    const geometry=mesh.geometry;geometry.clearGroups();mesh.material=transparent?this.transparent:this.opaque;
+    if(transparent){const cutout:number[]=[],blend:number[]=[];
+      for(let i=0;i<indices.length;i+=3)(this.cutoutTiles.has(tiles[indices[i]])?cutout:blend).push(indices[i],indices[i+1],indices[i+2]);
+      if(cutout.length){indices=new Uint32Array([...cutout,...blend]);geometry.addGroup(0,cutout.length,0);if(blend.length)geometry.addGroup(cutout.length,blend.length,1);mesh.material=[this.opaque,this.transparent];}
+    }
+    // Reuse the GPU's existing index allocation; unchanged vertex/texture buffers stay intact.
+    const old=geometry.index;if(old&&old.array.length>=indices.length){old.array.set(indices);old.needsUpdate=true;geometry.setDrawRange(0,indices.length);}
+    else {geometry.setIndex(new BufferAttribute(indices.slice(),1));geometry.setDrawRange(0,indices.length);}
   }
 }

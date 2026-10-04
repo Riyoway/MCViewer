@@ -32,6 +32,7 @@ export interface Block {
   light: number;
   opacity: number;
   state: string;
+  particle?:number;
 }
 export interface Manifest {
   atlas: { size: number; cell: number; pixels: number; tiles: Tile[] };

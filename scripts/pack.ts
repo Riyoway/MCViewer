@@ -36,6 +36,28 @@ export class Packs {
 
   restoreTileKeys(){for(const [id,tile] of this.tiles.entries())if(tile.key)this.tileCache.set(tile.key,id);}
 
+  async particleTile(block:Block):Promise<number|undefined>{
+    await this.init(block.theme);const props=Object.fromEntries((block.state.split('[')[1]??'').replace(']','').split(',').filter(Boolean).map(s=>s.split('=')));
+    const state=await this.packJson(block.theme,'blockstates',block.name);
+    const matches=(when:any):boolean=>!when||(when.OR?when.OR.some(matches):when.AND?when.AND.every(matches):Object.entries(when).every(([k,v])=>String(v).split('|').includes(props[k])));
+    let variant:any=Object.entries(state?.variants??{}).find(([k])=>!k||k.split(',').every(pair=>{const [p,v]=pair.split('=');return v.split('|').includes(props[p]);}))?.[1];
+    variant??=state?.multipart?.find((p:any)=>matches(p.when))?.apply;variant=Array.isArray(variant)?variant[0]:variant;
+    const model=variant?await this.model(block.theme,variant.model):await this.model(block.theme,block.name);
+    let texture=model?.textures?.particle;for(let depth=0;texture?.startsWith('#')&&depth<16;depth++)texture=model.textures[texture.slice(1)];
+    if(!texture)return undefined;
+    const normalize=(name:string)=>name.replace('minecraft:','').replace(/^block\//,'');
+    const key=`${block.theme}:${normalize(texture)}`;let tile=this.tileCache.get(key);
+    // Early map atlases predate persisted tile keys. Recover the native texture's
+    // existing face ID without renumbering tiles or copying another atlas.
+    if(tile===undefined)for(const [i,e] of (model.elements??[]).entries())for(const [face,value] of Object.entries(e.faces??{}) as [string,any][]){
+      let t=value.texture;for(let depth=0;t?.startsWith('#')&&depth<16;depth++)t=model.textures[t.slice(1)];
+      if(t&&normalize(t)===normalize(texture))tile??=block.elements[i]?.faces[face as keyof Element['faces']]?.tile;
+    }
+    if(block.fluid)tile??=block.fluidTiles?.[0];
+    tile??=this.blocks.find(b=>b?.theme===block.theme&&b.name===normalize(texture))?.tiles[0];
+    tile??=await this.tile(block.theme,texture);this.tileCache.set(key,tile);return tile;
+  }
+
   async init(theme: string) {
     if (this.roots[theme]) return;
     const root=`minecraft-memory-assets/resourcepacks/${theme}`;
@@ -298,6 +320,7 @@ export class Packs {
     const sturdyFaces=FACES.reduce((bits,_,i)=>bits|(coversFace(nativeBoxes,i)?1<<i:0),0);
     const block:Block={name,theme,solid,cube,occludes:cube&&solid&&!transparent&&!data?.transparent,transparent,fluid,fluidLevel,fluidTiles,sturdyFaces,emissive,tiles,uvRotations,tinted,tint,elements,rotation,collision,opacity:cube||fluid?(data?.filterLight??0):props.waterlogged==='true'?1:0,light,state:stateKey({Name:state.Name,Properties:props})};
     const id=this.blocks.length;if(id>=65536)throw new Error('Block palette exceeds 16-bit voxel storage');this.blocks.push(block);this.lookup[key]=id;
+    block.particle=await this.particleTile(block);
     this.lookup[`${theme}:${block.state}`]??=id;
     if(/door$/.test(name))await this.block(theme,{Name:state.Name,Properties:{...props,open:props.open==='true'?'false':'true'}});
     return id;

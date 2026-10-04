@@ -21,5 +21,6 @@ export class EditStore {
     }
     return changed;
   }
+  clear(){clearTimeout(this.timer);this.timer=undefined;this.cells.clear();this.originals.clear();this.flush();}
   flush(){clearTimeout(this.timer);this.timer=undefined;try{this.storage?.setItem(this.key,JSON.stringify({version:1,cells:Object.fromEntries(this.cells)}));}catch{/* Quota/private mode: current session remains editable. */}}
 }
