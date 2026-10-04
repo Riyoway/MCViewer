@@ -13,6 +13,8 @@ npm run dev
 
 マップ選択画面で読み込みが終わったら「プレイ」を押してください。素材やメッシュを変更したときは`npm run assets`で全マップを再生成します。未生成のマップだけ追加する場合は`npm run assets -- --append`を使えます。収録した元ZIPのMD5を配布定義と照合し、元ZIPがないときは従来のキャッシュ・ダウンロードを使用してリポジトリに保存します。全マップの再生成には数十分かかります。
 
+UIと雨の粒子画像だけの再生成は`npm run ui-assets`で行えます。1.13の実GUI・アイテムモデル・粒子アトラスと、各Mash-upの対応画像を使用します。新規ファイルを追加した場合はViteの開発サーバーも再起動してください。日本語アイテム名は公式Asset IndexのSHA-1と照合します。
+
 ```sh
 npm test
 npm run build
@@ -30,7 +32,9 @@ npm run preview
 | 一人称 → 三人称背面 → 三人称正面 | F5 / V |
 | 飛行の切り替え | Spaceを2回 |
 | 飛行中の上昇・下降 | Space / Shift |
-| ドアの開閉 | E / 右クリック |
+| ドアの開閉 | 右クリック |
+| インベントリ | E（閉じる: Esc） |
+| アイテム選択 | 一覧でクリックしてホットバーへ配置。Shift + クリックで空きスロットへ。ホバー中に1〜9で直接配置 |
 | 腕を振る | 左クリック |
 | メニュー | Esc |
 | 座標・FPS | F3 |
@@ -83,7 +87,7 @@ Entityのテクスチャは面ごとの領域を切り出してからアトラ�
 
 水・溶岩は保存された水位と隣接ブロックから角の高さを加重平均し、流れの勾配に沿ってFlowテクスチャを回転させます。湖にはStill、滝の側面にはFlowを使い、同じ液体の内部面は出力しません。Waterloggedにも対応し、泳ぎと水中表示は液面の高さを参照します。柵の接続状態を隣接ブロックから復元し、木製／ネザーレンガの区別、接続を受け付けないブロック、ゲートの向きを反映します。柵の衝突箱は本家の1.5ブロックの高さを使います。Mojang公式1.21.6のLiquidBlockRenderer、FlowingFluid、FenceBlock、FenceGateBlockと同梱のnative衝突データで確認しています。
 
-これは探索ビューアです。ブロックの設置・破壊、インベントリ、回路、Mob、ダメージは実装していません。液体の形状と流れる向きは元ワールドの状態から復元し、ワールドを変更する液体の広がりのシミュレーションは行いません。複数Biomeの色、Block Entityの模様やSignの文字など、Minecraft本体の全描画仕様との完全一致は対象外で、未対応モデルは生成Manifestの`unsupported`に記録します。
+これは探索ビューアです。インベントリはクリエイティブの素材一覧とホットバー選択に対応し、選んだ内容をマップごとにブラウザへ保存します。ブロックの設置・破壊、クラフト、手持ちアイテムの3D表示、回路、Mob、ダメージは実装していません。液体の形状と流れる向きは元ワールドの状態から復元し、ワールドを変更する液体の広がりのシミュレーションは行いません。複数Biomeの色、Block Entityの模様やSignの文字など、Minecraft本体の全描画仕様との完全一致は対象外で、未対応モデルは生成Manifestの`unsupported`に記録します。
 
 素材・URL・チェックサムは提供されたファイルを使用します。Default BGMはMinecraft公式1.13 Asset Indexの`music/game/calm1.ogg`。キーボード操作は[Minecraft公式の操作ガイド](https://www.minecraft.net/article/minecraft-controls)と[Educationのキー一覧](https://edusupport.minecraft.net/hc/en-us/articles/360047116832-Minecraft-keyboard-and-mouse-controls)に合わせています。
 

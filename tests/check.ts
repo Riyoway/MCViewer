@@ -19,6 +19,9 @@ import { AssetManager } from '../src/core/AssetManager.ts';
 import { Weather } from '../src/world/Weather.ts';
 import { precipitationColumn,precipitationOffsets } from '../src/world/Precipitation.ts';
 import { RainSounds } from '../src/world/RainSound.ts';
+import { RainDrop,RainParticles } from '../src/world/RainParticles.ts';
+import { Inventory,filterItems } from '../src/ui/Inventory.ts';
+import type { UIAssets } from '../src/ui/types.ts';
 import { Climate,precipitation,type WeatherAssets } from '../src/world/Climate.ts';
 import { unpackBiomes } from '../scripts/weather-assets.ts';
 import { unpackPalette } from '../scripts/anvil.ts';
@@ -31,6 +34,20 @@ import type { Manifest } from '../src/minecraft/types.ts';
 
 const manifest:Manifest=JSON.parse(await readFile('public/generated/manifest.json','utf8'));
 const weatherAssets:WeatherAssets=JSON.parse(await readFile('public/generated/weather/assets.json','utf8'));
+const uiAssets:UIAssets=JSON.parse(await readFile('public/generated/ui/assets.json','utf8'));
+assert.equal(Object.keys(uiAssets.themes).length,5);
+for(const [theme,ui] of Object.entries(uiAssets.themes)){
+  assert(ui.items.length>400);assert.equal(new Set(ui.items.map(item=>item.id)).size,ui.items.length);
+  for(const [file,width,height] of [[ui.hotbar,182,22],[ui.selection,...ui.selectionSize],[ui.inventory,195,136],[ui.particles,192,16]] as const){const metadata=await sharp(`public/generated/${file}`).metadata();assert.equal(metadata.width,width);assert.equal(metadata.height,height);}
+  const sword=ui.items.find(item=>item.id==='diamond_sword')!;assert(Number.isInteger(sword.icon),'Tools use their actual item sprite');
+  const fence=ui.items.find(item=>item.id==='oak_fence')!;assert(fence.model!.elements.length>1,'The GUI uses the native fence inventory model, including its two posts and rails');
+  const sapling=ui.items.find(item=>item.id==='oak_sapling')!;assert(Number.isInteger(sapling.icon),'Generated plant items use a flat sprite instead of a rotated world cross');
+  if(theme==='vanilla')assert.deepEqual(await sharp(`public/generated/${ui.hotbar}`).raw().toBuffer(),await sharp('minecraft-memory-assets/references/native-data/1.13/gui/widgets.png').extract({left:0,top:0,width:182,height:22}).raw().toBuffer());
+}
+const inventory=new Inventory(),catalog=uiAssets.themes.vanilla.items;
+inventory.load(['diamond_sword','missing-item'],catalog);assert.deepEqual(inventory.hotbar.slice(0,2),['diamond_sword',null],'Saved items are checked against the selected pack');
+inventory.select(-1);assert.equal(inventory.selected,8);inventory.cursor='apple';inventory.swap(0);assert.equal(inventory.hotbar[0],'apple');assert.equal(inventory.cursor,'diamond_sword');
+assert(filterItems(catalog,'ＤＩＡＭＯＮＤ＿ＳＷＯＲＤ').some(item=>item.id==='diamond_sword'),'Search accepts native IDs and full-width input');assert(filterItems(catalog,'ダイヤモンドの剣').length>0,'Native Japanese item names are searchable');
 assert.deepEqual(weatherAssets.sounds.rain,Array.from({length:8},(_,i)=>`weather/rain${i+1}.ogg`),'Official 1.13 weather.rain includes all eight native samples');
 assert.deepEqual(weatherAssets.sounds.rain_above,Array.from({length:4},(_,i)=>`weather/rain${i+1}.ogg`),'Official 1.13 weather.rain.above uses rain1..4');
 let atlasEnd=0;
@@ -96,6 +113,18 @@ const roofBuffer=new Uint8Array(encodeColumn(roofCells,[[0,0,0]],()=>240));let r
 try{globalThis.fetch=async input=>new Response(String(input).endsWith('.vox.gz')?roofBuffer:networkMeshes);roofWorld=new World({...networkAssets,manifest:{...networkAssets.manifest,worlds:{test:{spawn:[8,1,8],chunks:[{origin:[0,0,0],file:'roof.bin.gz',voxels:'roof.vox.gz'}]}}}} as any,'test');await roofWorld.start(()=>{});}finally{globalThis.fetch=realFetch;}
 assert.equal(roofWorld.precipitationSurface(8,8),5,'Even a transparent glass roof stops rainfall');assert.equal(roofWorld.precipitationSurface(7,8),1);assert.equal(roofWorld.precipitationSurface(32,0),null,'Unloaded terrain never emits rain');
 assert.equal(roofWorld.precipitationSurface(6,8),3.5);assert.equal(roofWorld.rainSoundSurface(6,8),3,'Rain audio uses the block heightmap, independent of a taller fence collider');
+const farmland=manifest.blocks.findIndex(b=>b?.name==='farmland'&&b.theme==='vanilla'),water=manifest.blocks.findIndex(b=>b?.name==='water'&&b.theme==='vanilla'&&b.fluidLevel===0),lava=manifest.blocks.findIndex(b=>b?.name==='lava'&&b.theme==='vanilla');
+roofWorld.voxels.set(3,1,3,farmland);assert.equal(roofWorld.rainParticleHit(3.3,2,3.7).height,1.9375,'Drops start on the actual 15/16 farmland surface');
+roofWorld.voxels.set(4,1,3,water);assert.equal(roofWorld.rainParticleHit(4.3,2,3.7).height,1+8/9,'Water splash height follows the fluid surface, not a full cube');
+const waterDrop=new RainDrop(4.3,1+8/9,3.7,()=>.5);for(let i=0;i<20&&!waterDrop.dead;i++)waterDrop.tick(roofWorld);assert(waterDrop.dead&&waterDrop.position.y<1+8/9,'Water removes the particle on immersion instead of giving it solid-ground collision');
+roofWorld.voxels.set(5,1,3,lava);assert(roofWorld.rainParticleHit(5.3,2,3.7).smoke,'Rain on lava produces smoke rather than a water drop');
+const flatTerrain={particleSurface:()=>1,light:()=>240},drop=new RainDrop(0,1,0,()=>.5);assert.equal(drop.life,13);assert(Math.abs(drop.size-.15)<1e-9);assert.equal(drop.frame,2);
+drop.tick(flatTerrain);assert(Math.abs(drop.position.y-1.14)<1e-9,'Native first-tick velocity is 0.2 - 0.06 blocks');
+let grounded=false;for(let i=0;i<40&&!drop.dead;i++){drop.tick(flatTerrain);if(drop.position.y===1)grounded=true;assert(drop.position.y>=1,'Particles never tunnel through the ground');}assert(grounded&&drop.dead,'Drops land and expire, instead of repeating a sine wave forever');
+const particles=new RainParticles({daylight:{value:1},gamma:{value:0}} as any,()=>.5),particleCamera=new PerspectiveCamera();particleCamera.rotation.set(-.4,.7,0);particles.spawn(0,1,0);particles.tick(flatTerrain);particles.render(particleCamera,flatTerrain,.5);
+assert.equal(particles.mesh.geometry.drawRange.count,6);assert.equal(particles.mesh.material.depthWrite,true,'Native opaque particle sprites participate in the depth pass');
+const particlePositions=particles.mesh.geometry.getAttribute('position'),edge=new Vector3().fromBufferAttribute(particlePositions,1).sub(new Vector3().fromBufferAttribute(particlePositions,0)),right=new Vector3(1,0,0).applyQuaternion(particleCamera.quaternion);assert(edge.clone().normalize().distanceTo(right)<1e-6,'Rain sprites face the camera even when looking down');
+particles.clear();assert.equal(particles.drops.length,0);assert.equal(particles.mesh.geometry.drawRange.count,0);
 const weather=new Weather({daylight:{value:1}} as any,{worlds:{},sounds:{}},()=>0);Object.assign(weather,{climate:new Climate({biomes:climates,columns:{'0,0':{sections:{0:0}}}})});
 weather.setMode('rain');weather.update(5,new Vector3(8,2.62,8),roofWorld,true);assert(weather.stats.rainColumns>0&&weather.stats.snowColumns===0);assert(weather.stats.sheltered);assert(weather.rain.geometry.getAttribute('position').array.every(Number.isFinite));
 for(let i=0;i<weather.rain.geometry.drawRange.count;i++){const p=weather.rain.geometry.getAttribute('position');assert(p.getY(i)>=roofWorld.precipitationSurface(Math.floor(p.getX(i)),Math.floor(p.getZ(i)))!,'Rain stays above the surface or roof');}
@@ -107,6 +136,8 @@ assert.notDeepEqual(Array.from(snowGeometry.getAttribute('uv').array),uvs,'Snow 
 weather.setMode('clear');weather.update(5,new Vector3(8,2.62,8),roofWorld,true);assert.equal(weather.rain.visible,false);assert.equal(weather.snow.visible,false);
 weather.cycle=true;weather.minutes=1;weather.update(60,new Vector3(8,2.62,8),roofWorld,false);assert.equal(weather.mode,'clear','Automatic weather pauses with gameplay');weather.update(60,new Vector3(8,2.62,8),roofWorld,true);assert.equal(weather.mode,'thunder');roofWorld.dispose();
 const rainSoundSampler=new RainSounds(),rainEye=new Vector3(0,2.62,0),rainHits:{tick:number;sound:NonNullable<ReturnType<RainSounds['tick']>>}[]=[];
+let splashHits:number[][]=[];new RainSounds().tick(1,rainEye,()=>1,()=>'rain',(...position)=>splashHits.push(position));assert.equal(splashHits.length,100,'Full rain samples one hundred surface impacts per native tick');assert(splashHits.some(p=>p[0]%1!==splashHits[0][0]%1),'Impacts use independent sub-block offsets');
+splashHits=[];new RainSounds().tick(1,rainEye,()=>1,()=>'snow',(...position)=>splashHits.push(position));assert.equal(splashHits.length,0,'Snow never produces rain splashes');
 for(let tick=0;tick<20;tick++){const sound=rainSoundSampler.tick(1,rainEye,()=>1,()=>'rain');if(sound)rainHits.push({tick,sound});}
 assert.deepEqual(rainHits.map(({tick,sound})=>[tick,sound.position]),[[2,[-2.5,.5,-6.5]],[6,[5.5,.5,5.5]],[8,[7.5,.5,-5.5]],[12,[-5.5,.5,6.5]],[15,[3.5,.5,6.5]],[18,[-3.5,.5,10.5]]],'Native 20Hz rain sound positions/timing match an independent java.util.Random reference');
 assert(rainHits.every(({sound})=>sound.key==='rain'&&sound.volume===.2&&sound.pitch===1));

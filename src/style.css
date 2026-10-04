@@ -7,3 +7,21 @@
 @media(max-height:720px){.panel{padding:16px}.panel h1{margin-bottom:14px}.map{min-height:60px}.map img{height:42px;width:66px}.controls{margin-top:12px}}
 #map-menu{display:flex;flex-direction:column}#map-menu>:not(.map-list){flex-shrink:0}.map-list{min-height:0;overflow-y:auto;padding:2px;margin:-2px}
 .weather-note{margin:0;font-size:11px;line-height:1.7;color:#bbb}
+:root{--gui-scale:2}
+.crosshair{width:15px;height:15px;background-size:100% 100%;image-rendering:pixelated;transform:translate(-50%,-50%) scale(var(--gui-scale))}
+.crosshair:before,.crosshair:after{display:none}
+#hotbar{bottom:0;width:182px;height:22px;border:0;box-shadow:none;display:block;background-color:transparent;background-size:100% 100%;image-rendering:pixelated;transform:translateX(-50%) scale(var(--gui-scale));transform-origin:bottom center}
+.hotbar-selection{position:absolute;top:-1px;width:24px;height:22px;background-size:100% 100%;pointer-events:none}
+.hotbar-item{position:absolute;top:3px;width:16px;height:16px}
+.item-icon{display:block;width:16px;height:16px;background-repeat:no-repeat;background-size:16px 16px;image-rendering:pixelated;pointer-events:none}
+#inventory-screen{position:fixed;inset:0;background:#0008;z-index:10}
+.inventory-open #menus{display:none}
+#inventory-panel{position:absolute;left:50%;top:50%;width:195px;height:136px;transform:translate(-50%,-50%) scale(var(--gui-scale));background-size:100% 100%;image-rendering:pixelated;color:#404040;text-shadow:none;font-size:8px}
+.inventory-title{position:absolute;left:8px;top:5px;font-size:8px}
+#item-search{position:absolute;left:82px;top:5px;width:86px;height:10px;min-height:0;padding:0;border:0;background:transparent;color:white;outline:none;font-size:8px;line-height:10px;text-shadow:none}
+.inventory-slot,.inventory-slot:hover:not(:disabled),.inventory-slot:active:not(:disabled){all:unset;position:absolute;width:16px;height:16px;cursor:pointer}
+.inventory-slot:hover:after,.inventory-slot:focus-visible:after{content:"";position:absolute;inset:0;background:#ffffff80;pointer-events:none}
+#inventory-scroll{position:absolute;left:175px;top:18px;width:12px;height:90px;cursor:ns-resize;touch-action:none}
+#inventory-scroll:before{content:"";position:absolute;top:var(--scroll-position,0px);left:0;width:12px;height:15px;background-image:var(--scroller);background-size:100% 100%}
+#item-tooltip{position:fixed;pointer-events:none;background:#100010f2;border:2px solid #290060;box-shadow:0 0 0 2px #100010;padding:5px 8px;font-size:calc(8px * var(--gui-scale));line-height:1.4;white-space:nowrap;color:white}
+#item-cursor{position:fixed;width:16px;height:16px;transform:translate(-50%,-50%) scale(var(--gui-scale));pointer-events:none}

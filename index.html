@@ -16,7 +16,7 @@
       <div id="maps" class="map-list" aria-label="ワールド"></div>
       <p id="loading" role="status" aria-live="polite">素材を読み込み中…</p>
       <div class="actions"><button id="enter" disabled>プレイ</button><button id="map-settings">設定</button></div>
-      <p class="controls">WASD 移動 · Space ジャンプ · Ctrl ダッシュ · Shift スニーク<br />F5 / V 視点 · E / 右クリック ドア · Esc メニュー<br />Space 2回で飛行 · 飛行中はSpace / Shiftで上下</p>
+      <p class="controls">WASD 移動 · Space ジャンプ · Ctrl ダッシュ · Shift スニーク<br />F5 / V 視点 · E インベントリ · 右クリック ドア · Esc メニュー<br />Space 2回で飛行 · 飛行中はSpace / Shiftで上下</p>
     </main>
     <section id="pause-menu" class="panel compact" hidden>
       <h1>ゲームメニュー</h1>
@@ -58,6 +58,13 @@
     <div id="error" role="alert" hidden></div>
   </div>
   <div id="hud" hidden aria-hidden="true"><div class="crosshair"></div><div id="hotbar"></div><div id="debug" hidden></div><div id="water-overlay"></div></div>
+  <div id="inventory-screen" hidden>
+    <section id="inventory-panel" role="dialog" aria-modal="true" aria-label="インベントリ">
+      <span class="inventory-title">検索</span><input id="item-search" aria-label="アイテムを検索" autocomplete="off" spellcheck="false" />
+      <div id="inventory-scroll" role="scrollbar" aria-label="アイテム一覧" aria-valuemin="0" aria-valuenow="0" aria-orientation="vertical"></div>
+    </section>
+    <div id="item-tooltip" hidden></div><div id="item-cursor" hidden></div>
+  </div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

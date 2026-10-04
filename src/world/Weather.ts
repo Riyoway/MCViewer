@@ -1,9 +1,11 @@
-import { Group,Mesh,MeshBasicMaterial,BufferGeometry,Float32BufferAttribute,TextureLoader,NearestFilter,RepeatWrapping,SRGBColorSpace,DoubleSide,Vector3,Texture,Points,PointsMaterial,AdditiveBlending } from 'three';
+import { Group,Mesh,MeshBasicMaterial,BufferGeometry,Float32BufferAttribute,TextureLoader,NearestFilter,RepeatWrapping,SRGBColorSpace,DoubleSide,Vector3,Texture,AdditiveBlending,type Camera } from 'three';
 import { assetUrl,AssetManager,lightmap } from '../core/AssetManager';
 import type { World } from '../minecraft/WorldLoader';
 import { Climate,precipitation,type WeatherAssets,type ClimateData,type Precipitation } from './Climate';
 import { precipitationColumn,precipitationOffsets } from './Precipitation';
 import { RainSounds,type RainSound } from './RainSound';
+import { RainParticles } from './RainParticles';
+import type { UIAssets } from '../ui/types';
 
 export type WeatherMode='clear'|'rain'|'thunder'|'snow';
 const modes:WeatherMode[]=['clear','rain','thunder','snow'];
@@ -35,29 +37,32 @@ export class Weather {
   private climateRequest?:AbortController;
   private columns=new Map<string,ReturnType<typeof precipitationColumn>>();
   private bolt=new Mesh(new BufferGeometry(),new MeshBasicMaterial({color:0xf0d8ff,transparent:true,blending:AdditiveBlending,depthWrite:false,fog:false}));
-  private splashes=new Points(new BufferGeometry(),new PointsMaterial({color:0xadc1d5,size:.06,transparent:true,opacity:.65,depthWrite:false}));
+  readonly splashes:RainParticles;
   private rainColumns=0;private snowColumns=0;
   private rainSounds=new RainSounds();private soundClock=0;private soundEvents:RainSound[]=[];
   constructor(readonly assets:AssetManager,readonly data:WeatherAssets,private random= Math.random){
     this.rain=precipitationMesh(assets);this.snow=precipitationMesh(assets);
-    this.root.add(this.rain,this.snow,this.bolt,this.splashes);this.bolt.visible=false;this.splashes.geometry.setAttribute('position',new Float32BufferAttribute(new Float32Array(48*3),3));this.splashes.frustumCulled=false;
+    this.splashes=new RainParticles(assets,random);this.root.add(this.rain,this.snow,this.bolt,this.splashes.mesh);this.bolt.visible=false;
   }
   static async create(assets:AssetManager){
     const data=await readJSON<WeatherAssets>('weather/assets.json'),weather=new Weather(assets,data),loader=new TextureLoader();
     for(const file of new Set(Object.values(data.worlds).flatMap(w=>[w.rain,w.snow]))){const texture=await loader.loadAsync(assetUrl(file));texture.magFilter=NearestFilter;texture.minFilter=NearestFilter;texture.wrapS=texture.wrapT=RepeatWrapping;texture.colorSpace=SRGBColorSpace;weather.textures.set(file,texture);}
+    const ui=await readJSON<UIAssets>('ui/assets.json');
+    for(const theme of Object.values(ui.themes)){const texture=await loader.loadAsync(assetUrl(theme.particles));texture.magFilter=texture.minFilter=NearestFilter;texture.generateMipmaps=false;texture.colorSpace=SRGBColorSpace;weather.textures.set(theme.particles,texture);}
     return weather;
   }
   async select(name:string){
     this.climateRequest?.abort();this.climateRequest=new AbortController();
     const token=++this.selection,world=this.data.worlds[name];this.columns.clear();this.climate=undefined;this.rainSounds=new RainSounds();this.soundClock=0;this.soundEvents=[];this.flash=0;this.bolt.visible=false;this.thunderDelay=-1;this.thunderEvents=0;this.lightningTime=8+this.random()*12;
     this.rain.geometry.setDrawRange(0,0);this.snow.geometry.setDrawRange(0,0);
+    const particleTexture=this.textures.get(`ui/${name.startsWith('tutorial')?'vanilla':name}-particles.png`);if(particleTexture)this.splashes.select(particleTexture);else this.splashes.clear();
     if(!world)throw new Error(`天候データがありません: ${name}`);
     for(const type of ['rain','snow'] as const){this[type].material.map=this.textures.get(world[type])!;this[type].material.needsUpdate=true;}
     const data=await readJSON<ClimateData>(world.climate,this.climateRequest.signal);if(token===this.selection)this.climate=new Climate(data);
   }
   setMode(mode:WeatherMode){if(this.mode===mode)return;this.mode=modes.includes(mode)?mode:'clear';if(this.mode!=='clear')this.precipitationMode=this.mode;this.cycleTime=0;if(this.mode!=='thunder'){this.flash=0;this.bolt.visible=false;this.thunderDelay=-1;this.thunderEvents=0;}}
   kind(x:number,y:number,z:number):Precipitation{return this.mode==='clear'&&this.rainLevel<.001?'none':this.precipitationMode==='snow'?'snow':precipitation(this.climate?.at(x,y,z),y);}
-  update(dt:number,eye:Vector3,world:World,playing:boolean){
+  update(dt:number,eye:Vector3,world:World,playing:boolean,camera?:Camera){
     this.elapsed+=dt;
     this.soundEvents=[];
     if(this.cycle&&playing&&(this.cycleTime+=dt)>=this.minutes*60){this.cycleTime=0;this.setMode(this.mode==='clear'?(this.random()<.2?'thunder':'rain'):'clear');}
@@ -66,7 +71,7 @@ export class Weather {
     this.flash=Math.max(0,this.flash-dt*3);this.bolt.visible=this.flash>0;
     if(playing&&this.mode==='thunder'&&this.thunderLevel>.5){this.lightningTime-=dt;if(this.lightningTime<=0){this.strike(eye,world);this.lightningTime=20+this.random()*50;}}
     if(playing&&this.thunderDelay>=0){this.thunderDelay-=dt;if(this.thunderDelay<0)this.thunderEvents++;}
-    this.rainColumns=0;this.snowColumns=0;const counts={rain:0,snow:0},cx=Math.floor(eye.x),cy=Math.floor(eye.y),cz=Math.floor(eye.z),splashes:number[]=[];
+    this.rainColumns=0;this.snowColumns=0;const counts={rain:0,snow:0},cx=Math.floor(eye.x),cy=Math.floor(eye.y),cz=Math.floor(eye.z);
     if(this.columns.size>2048)this.columns.clear();
     for(let dz=-10;dz<=10;dz++)for(let dx=-10;dx<=10;dx++){
       const x=cx+dx,z=cz+dz,surface=world.precipitationSurface(x,z);if(surface===null)continue;
@@ -78,20 +83,19 @@ export class Weather {
       const distance=((x+.5-eye.x)**2+(z+.5-eye.z)**2)/100,nearAlpha=kind==='rain'?1:.8,fade=Math.max(0,nearAlpha+(.5-nearAlpha)*distance);
       const vx=-dz/len,vz=dx/len,key=`${x},${z}`;
       let motion=this.columns.get(key);if(!motion){motion=precipitationColumn(x,z);this.columns.set(key,motion);}
-      const [uOffset,vOffset]=precipitationOffsets(motion,kind,this.elapsed),hash=motion.snowU;
+      const [uOffset,vOffset]=precipitationOffsets(motion,kind,this.elapsed);
       const mesh=this[kind],geometry=mesh.geometry,position=geometry.getAttribute('position'),uv=geometry.getAttribute('uv'),color=geometry.getAttribute('color'),light=geometry.getAttribute('lightLevel'),column=counts[kind]++;
       const level=world.light(x,Math.floor(Math.max(surface,eye.y)),z),sky=level>>4,block=level&15;
       const skyLight=(kind==='snow'?Math.floor((sky*3+15)/4):sky)/15,blockLight=(kind==='snow'?Math.floor((block*3+15)/4):block)/15;
       const coords=[[0,0],[1,0],[0,1],[1,0],[1,1],[0,1]];
       for(let i=0;i<6;i++){const [u,v]=coords[i],n=column*6+i;position.setXYZ(n,x+.5+vx*(u-.5),v?top:bottom,z+.5+vz*(u-.5));uv.setXY(n,u+uOffset,1-((v?bottom:top)/4+vOffset));color.setXYZW(n,1,1,1,fade);light.setXY(n,skyLight,blockLight);}
-      if(kind==='rain'&&surface>eye.y-8&&surface<eye.y+1&&splashes.length<48*3&&hash>.85){const t=(this.elapsed*3+hash)%1;splashes.push(x+.5+(hash-.5)*.6,surface+.015+Math.sin(t*Math.PI)*.12,z+.5+Math.cos(t*6)*.08);}
     }
     for(const kind of ['rain','snow'] as const){const mesh=this[kind];mesh.material.opacity=this.rainLevel;mesh.geometry.setDrawRange(0,counts[kind]*6);for(const name of ['position','uv','color','lightLevel'])mesh.geometry.getAttribute(name).needsUpdate=true;mesh.visible=counts[kind]>0&&this.rainLevel>.001;}
     this.rainColumns=counts.rain;this.snowColumns=counts.snow;
-    const splashPosition=this.splashes.geometry.getAttribute('position');splashes.forEach((v,i)=>splashPosition.array[i]=v);splashPosition.needsUpdate=true;this.splashes.geometry.setDrawRange(0,splashes.length/3);this.splashes.material.opacity=this.rainLevel*.65;
     const roof=world.precipitationSurface(eye.x,eye.z);this.sheltered=roof!==null&&roof>eye.y;
-    if(playing){this.soundClock+=dt;while(this.soundClock>=.05-1e-9){this.soundClock=Math.max(0,this.soundClock-.05);const sound=this.rainSounds.tick(this.rainLevel,eye,(x,z)=>world.rainSoundSurface(x,z),(x,y,z)=>this.kind(x,y,z));if(sound)this.soundEvents.push(sound);}}
+    if(playing){this.soundClock+=dt;while(this.soundClock>=.05-1e-9){this.soundClock=Math.max(0,this.soundClock-.05);this.splashes.tick(world);const sound=this.rainSounds.tick(this.rainLevel,eye,(x,z)=>world.rainSoundSurface(x,z),(x,y,z)=>this.kind(x,y,z),(x,y,z)=>{const hit=world.rainParticleHit(x,y,z);this.splashes.spawn(x,hit.height,z,hit.smoke);});if(sound)this.soundEvents.push(sound);}}
     else {this.soundClock=0;this.soundEvents=[];}
+    if(camera)this.splashes.render(camera,world,this.soundClock/.05);
   }
   strike(eye:Vector3,world:World){
     const angle=this.random()*Math.PI*2,distance=24+this.random()*40,x=Math.floor(eye.x+Math.cos(angle)*distance),z=Math.floor(eye.z+Math.sin(angle)*distance),surface=world.precipitationSurface(x,z);

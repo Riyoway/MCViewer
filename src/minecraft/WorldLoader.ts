@@ -5,6 +5,7 @@ import { appendElement, emptyMesh } from './Mesher';
 import { AssetManager, assetUrl } from '../core/AssetManager';
 import { Collision } from '../core/Collision';
 import type { WorldManifest, Vec3 } from './types';
+import { fluidHeight,fluidKind } from './Fluid';
 
 async function readCompressed(file:string,signal:AbortSignal) {
   const response=await fetch(assetUrl(file),{signal});if(!response.ok)throw new Error(`チャンクを読み込めません: ${file}`);
@@ -67,6 +68,22 @@ export class World {
   rainSoundSurface(x:number,z:number):number|null {
     x=Math.floor(x);z=Math.floor(z);
     return this.loaded.get(`${Math.floor(x/16)},${Math.floor(z/16)}`)?.rainSurface[(z&15)*16+(x&15)]??null;
+  }
+  particleSurface(x:number,y:number,z:number,fluids=true):number|null {
+    const X=Math.floor(x),Z=Math.floor(z);if(!this.collision.loaded(X,Z))return null;
+    let top:number|null=null;
+    for(let Y=Math.floor(y)-1;Y<=Math.floor(y);Y++){
+      const block=this.assets.manifest.blocks[this.voxels.get(X,Y,Z)];if(!block)continue;
+      const fluid=fluidKind(block),above=this.assets.manifest.blocks[this.voxels.get(X,Y+1,Z)];
+      if(fluid&&fluids){const height=Y+fluidHeight(block,above,fluid);top=Math.max(top??-Infinity,height);}
+      for(const box of block.collision)if(x-X>=box.from[0]&&x-X<=box.to[0]&&z-Z>=box.from[2]&&z-Z<=box.to[2])top=Math.max(top??-Infinity,Y+box.to[1]);
+    }
+    return top;
+  }
+  particleCollision(x:number,y:number,z:number){return this.particleSurface(x,y,z,false);}
+  rainParticleHit(x:number,top:number,z:number){
+    const y=top-1,block=this.assets.manifest.blocks[this.voxels.get(Math.floor(x),y,Math.floor(z))];
+    return {height:this.particleSurface(x,y,z)??y,smoke:!!block&&(block.name==='lava'||block.name==='magma_block'||block.name.endsWith('campfire')&&!block.state.includes('lit=false'))};
   }
   private door(id:number,level:number):Mesh {
     const key=`${id}:${level}`;let mesh=this.doorGeometry.get(key);
