@@ -14,6 +14,8 @@ import { Player } from '../src/core/Player.ts';
 import { PlayerModel, skinBox } from '../src/core/PlayerModel.ts';
 import { AudioManager } from '../src/core/AudioManager.ts';
 import { Sky } from '../src/world/Sky.ts';
+import { Clouds,cloudGeometry,cloudTint } from '../src/world/Clouds.ts';
+import { AssetManager } from '../src/core/AssetManager.ts';
 import { Weather } from '../src/world/Weather.ts';
 import { precipitationColumn,precipitationOffsets } from '../src/world/Precipitation.ts';
 import { Climate,precipitation,type WeatherAssets } from '../src/world/Climate.ts';
@@ -322,4 +324,31 @@ const sky=new Sky({daylight:{value:0},time:{value:0}} as any),fog=new Fog('#fff'
 sky.environment={sky_color:'#3d2300',fog_color:'#e4880b',sun:'',moon:'',clouds:''};sky.update(0,new Vector3(),fog,true,96);assert.equal(fog.color.getHexString(),'e4880b','Halloween keeps the pack’s original orange fog');
 sky.time=18000;sky.update(0,new Vector3(),fog,true,96);assert(sky.brightness<.1);sky.cycle=true;sky.time=0;sky.minutes=20;sky.update(1200,new Vector3(),fog,true,96);assert.equal(sky.time,0);
 sky.cycle=false;sky.time=6000;sky.update(0,new Vector3(),fog,true,96,{rainLevel:1,thunderLevel:1,flash:0});const stormBrightness=sky.brightness;assert(stormBrightness<.4);assert(fog.far<96,'Rain reduces visibility');sky.update(0,new Vector3(),fog,true,96,{rainLevel:1,thunderLevel:1,flash:1});assert(sky.brightness>stormBrightness,'Lightning briefly lights the sky');
-console.log('Checks passed: all tutorials and Mash-ups, weather climates/roofs/transitions, rain/snow/storm lighting, fluids, fences, native UVs, lighting, doors, movement/input, audio, Anvil and day/night.');
+const cloudPattern={width:5,height:5,pixels:new Uint8Array(5*5*4)};cloudPattern.pixels.set([43,8,69,255],(2*5+2)*4);
+const cloudCell=cloudGeometry(cloudPattern,2,2,0),cloudColor=cloudCell.getAttribute('color');
+assert.equal(cloudCell.index!.count,36,'One native cloud pixel becomes a closed cuboid');
+cloudCell.computeBoundingBox();assert.deepEqual(cloudCell.boundingBox!.getSize(new Vector3()).toArray(),[12,4,12]);
+for(const [face,shade] of [.9,.9,1,.7,.8,.8].entries()){assert(Math.abs(cloudColor.getX(face*4)-43/255*shade)<1e-7,'Pack cloud colors retain native face shading');assert(Math.abs(cloudColor.getW(face*4)-.8)<1e-7);}
+const wrappedCloud=cloudGeometry(cloudPattern,-3,-3,0);assert.deepEqual(Array.from(wrappedCloud.getAttribute('color').array),Array.from(cloudColor.array),'Native cloud pattern repeats at negative coordinates');
+cloudPattern.pixels.set([255,255,255,255],(2*5+3)*4);const adjacentCloud=cloudGeometry(cloudPattern,2,2,1);assert.equal(adjacentCloud.index!.count,60,'Adjacent cloud pixels omit their two internal faces');
+assert.deepEqual(cloudTint(6000,0,0),[1,1,1]);assert.deepEqual(cloudTint(18000,0,0),[.1,.1,.15]);assert.deepEqual(cloudTint(6000,1,0),[.62,.62,.62]);
+for(const color of cloudTint(6000,1,1))assert(Math.abs(color-.1488)<1e-10,'Native thunder darkens cloud color with its grey blend');
+const clouds=new Clouds();clouds.setPattern(cloudPattern);const cloudEye=new Vector3(0,70,0);clouds.update(cloudEye,0,6000,true,true,0,0);const cachedCloud=clouds.color.geometry;
+assert.equal(clouds.root.position.y+cloudEye.y,128.33);assert(clouds.color.renderOrder<0&&clouds.depth.renderOrder<clouds.color.renderOrder);
+cloudEye.x=10;clouds.update(cloudEye,1,18000,true,true,0,0);assert.equal(clouds.color.geometry,cachedCloud);assert(Math.abs(cloudEye.x+clouds.root.position.x+.6)<1e-10,'Clouds move 0.03 blocks per native tick without following the camera');
+cloudEye.y=200;clouds.update(cloudEye,1,6000,false,true,0,0);assert.equal(clouds.root.position.y+cloudEye.y,192);assert(clouds.depth.renderOrder>0,'Above the cloud layer, clouds follow translucent terrain');
+assert.equal(clouds.depth.material.colorWrite,false);assert.equal(clouds.depth.material.depthWrite,true);assert.equal(clouds.color.material.depthWrite,false);assert.equal(clouds.depth.material.forceSinglePass,true);
+clouds.update(cloudEye,1,6000,true,false,0,0);assert.equal(clouds.root.visible,false);
+const glassAssets=Reflect.construct(AssetManager,[manifest,new MeshBasicMaterial({alphaTest:.1})]) as AssetManager;
+for(const theme of ['vanilla','mario','festive','halloween','chinese']){
+  const data=emptyMesh();const blocks=['glass','glass_pane','water'].map(name=>manifest.blocks.find(b=>b?.theme===theme&&b.name===name)!);
+  for(const [x,block] of blocks.entries())for(const element of block.elements)appendElement(data,element,[x,0,0],block);
+  const stained=manifest.blocks.find(b=>b?.theme===theme&&b.name.endsWith('_stained_glass'));if(stained)for(const element of stained.elements)appendElement(data,element,[3,0,0],stained);
+  // Fluids have their own mesher; add a translucent quad to cover mixed saved meshes too.
+  appendElement(data,{from:[4,0,0],to:[5,1,0],faces:{north:{tile:blocks[2].fluidTiles![0],uv:[0,0,16,16]}}},[0,0,0],{rotation:[0,0,0],emissive:0,tint:[1,1,1]});
+  const glassMesh=glassAssets.mesh(data,true),materials=glassMesh.material as MeshBasicMaterial[];
+  assert.equal(materials[0].transparent,false,'Ordinary glass writes depth in the native cutout pass');assert.equal(materials[0].depthWrite,true);assert.equal(materials[1].transparent,true);assert.equal(materials[1].depthWrite,false);
+  assert.equal(glassMesh.geometry.groups.length,2);assert.equal(glassMesh.geometry.index!.count,data.index.length,'Separating cutout/blend preserves every original triangle');glassMesh.geometry.dispose();
+}
+for(const geometry of [cloudCell,wrappedCloud,adjacentCloud,clouds.color.geometry])geometry.dispose();
+console.log('Checks passed: all tutorials and Mash-ups, native clouds and glass layers, weather climates/roofs/transitions, rain/snow/storm lighting, fluids, fences, native UVs, lighting, doors, movement/input, audio, Anvil and day/night.');

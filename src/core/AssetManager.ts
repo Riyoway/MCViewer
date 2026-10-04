@@ -25,12 +25,14 @@ export class AssetManager {
   readonly opaque:MeshBasicMaterial;
   readonly transparent:MeshBasicMaterial;
   readonly manifest:Manifest;
+  private cutoutTiles=new Set<number>();
   private constructor(manifest:Manifest, material:MeshBasicMaterial) {
     this.manifest=manifest;this.opaque=material;
     this.transparent=material.clone();
     this.transparent.transparent=true;this.transparent.depthWrite=false;
     this.transparent.onBeforeCompile=material.onBeforeCompile;
     this.transparent.customProgramCacheKey=()=> 'minecraft-atlas-v4';
+    for(const block of manifest.blocks)if(block&&['glass','glass_pane'].includes(block.name))for(const element of block.elements)for(const face of Object.values(element.faces))if(face)this.cutoutTiles.add(face.tile);
   }
   static async load() {
     const response=await fetch(assetUrl('manifest.json'));
@@ -110,9 +112,15 @@ export class AssetManager {
     }
     geometry.setAttribute('tileInfo',new Float32BufferAttribute(info,3));
     geometry.setAttribute('tileSize',new Float32BufferAttribute(size,2));
-    geometry.setIndex(new BufferAttribute('indices' in data?data.indices:new Uint32Array(data.index),1));
+    let indices='indices' in data?data.indices:new Uint32Array(data.index),materials:MeshBasicMaterial|MeshBasicMaterial[]=transparent?this.transparent:this.opaque;
+    if(transparent){
+      const cutout:number[]=[],blend:number[]=[];
+      for(let i=0;i<indices.length;i+=3)(this.cutoutTiles.has(attrs[3][indices[i]])?cutout:blend).push(indices[i],indices[i+1],indices[i+2]);
+      if(cutout.length){indices=new Uint32Array([...cutout,...blend]);geometry.addGroup(0,cutout.length,0);if(blend.length)geometry.addGroup(cutout.length,blend.length,1);materials=[this.opaque,this.transparent];}
+    }
+    geometry.setIndex(new BufferAttribute(indices,1));
     geometry.computeBoundingSphere();geometry.computeBoundingBox();
-    const mesh=new Mesh(geometry,transparent?this.transparent:this.opaque);
+    const mesh=new Mesh(geometry,materials);
     mesh.frustumCulled=true;
     return mesh;
   }

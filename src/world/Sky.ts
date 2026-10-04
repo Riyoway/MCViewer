@@ -1,9 +1,11 @@
-import { Group, Mesh, MeshBasicMaterial, PlaneGeometry, SphereGeometry, ShaderMaterial, BackSide, Color, Vector3, TextureLoader, NearestFilter, SRGBColorSpace, RepeatWrapping, Points, BufferGeometry, Float32BufferAttribute, PointsMaterial, Fog, AdditiveBlending, Texture } from 'three';
+import { Group, Mesh, MeshBasicMaterial, PlaneGeometry, SphereGeometry, ShaderMaterial, BackSide, Color, Vector3, TextureLoader, NearestFilter, SRGBColorSpace, Points, BufferGeometry, Float32BufferAttribute, PointsMaterial, Fog, AdditiveBlending, Texture } from 'three';
 import { assetUrl, AssetManager } from '../core/AssetManager';
+import { Clouds } from './Clouds';
 
 export class Sky {
   readonly root=new Group();time=6000;cycle=true;minutes=20;clouds=true;
-  private sun!:Mesh;private moon!:Mesh;private cloud!:Mesh;private stars:Points;
+  private sun!:Mesh;private moon!:Mesh;private stars:Points;
+  readonly cloudRenderer=new Clouds();
   private sphere:Mesh;
   environment:AssetManager['manifest']['worlds'][string]['environment'];
   private textures=new Map<string,Texture>();
@@ -14,7 +16,7 @@ export class Sky {
     let seed=42;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;},positions:number[]=[];
     for(let i=0;i<1100;i++){const v=new Vector3(random()*2-1,random()*2-1,random()*2-1).normalize().multiplyScalar(270);positions.push(...v.toArray());}
     const geometry=new BufferGeometry();geometry.setAttribute('position',new Float32BufferAttribute(positions,3));
-    this.stars=new Points(geometry,new PointsMaterial({color:0xffffff,size:1.2,sizeAttenuation:false,transparent:true,depthWrite:false,fog:false}));this.root.add(this.stars);
+    this.stars=new Points(geometry,new PointsMaterial({color:0xffffff,size:1.2,sizeAttenuation:false,transparent:true,depthWrite:false,fog:false}));this.stars.renderOrder=-30;this.root.add(this.stars,this.cloudRenderer.root);
   }
   async load() {
     const loader=new TextureLoader();
@@ -24,18 +26,17 @@ export class Sky {
     for(const texture of [sun,moon,clouds]){texture.magFilter=NearestFilter;texture.minFilter=NearestFilter;texture.colorSpace=SRGBColorSpace;}
     moon.repeat.set(.25,.5);moon.offset.set(0,.5);
     this.sun=new Mesh(new PlaneGeometry(150,150),new MeshBasicMaterial({map:sun,transparent:true,blending:AdditiveBlending,depthWrite:false,fog:false}));
-    this.moon=new Mesh(new PlaneGeometry(100,100),new MeshBasicMaterial({map:moon,transparent:true,blending:AdditiveBlending,depthWrite:false,fog:false}));this.root.add(this.sun,this.moon);
-    clouds.wrapS=clouds.wrapT=RepeatWrapping;clouds.repeat.set(.33,.33);
-    this.cloud=new Mesh(new PlaneGeometry(1000,1000),new MeshBasicMaterial({map:clouds,transparent:true,alphaTest:.5,side:2,fog:true,depthWrite:true}));this.cloud.rotation.x=-Math.PI/2;this.root.add(this.cloud);
+    this.moon=new Mesh(new PlaneGeometry(100,100),new MeshBasicMaterial({map:moon,transparent:true,blending:AdditiveBlending,depthWrite:false,fog:false}));this.sun.renderOrder=this.moon.renderOrder=-30;this.root.add(this.sun,this.moon);
+    this.cloudRenderer.setTexture(clouds);
   }
   select(name:string){
     this.environment=this.assets.manifest.worlds[name]?.environment;
-    for(const [mesh,key,fallback] of [[this.sun,'sun','sun.png'],[this.moon,'moon','moon.png'],[this.cloud,'clouds','clouds.png']] as const){
+    for(const [mesh,key,fallback] of [[this.sun,'sun','sun.png'],[this.moon,'moon','moon.png']] as const){
       const texture=this.textures.get(this.environment?.[key]??fallback)!;
       if(key==='moon'){texture.repeat.set(.25,.5);texture.offset.set(0,.5);}
-      if(key==='clouds'){texture.wrapS=texture.wrapT=RepeatWrapping;texture.repeat.set(.33,.33);}
       (mesh.material as MeshBasicMaterial).map=texture;
     }
+    this.cloudRenderer.setTexture(this.textures.get(this.environment?.clouds??'clouds.png')!);
   }
   update(dt:number,eye:Vector3,fog:Fog,legacy:boolean,distance:number,weather={rainLevel:0,thunderLevel:0,flash:0}) {
     if(this.cycle)this.time=(this.time+dt*24000/(this.minutes*60))%24000;
@@ -49,7 +50,7 @@ export class Sky {
     fog.color.copy(this.horizon);fog.near=distance*(legacy?.35:.6)*(1-rain*.45);fog.far=distance*(1-rain*.2);
     (this.stars.material as PointsMaterial).opacity=(1-day)*.9*(1-rain);this.stars.rotation.z=angle;
     if(this.sun){(this.sun.material as MeshBasicMaterial).opacity=1-rain;(this.moon.material as MeshBasicMaterial).opacity=1-rain;this.sun.position.set(Math.cos(angle)*250,elevation*250,0);this.sun.quaternion.setFromUnitVectors(new Vector3(0,0,1),this.sun.position.clone().normalize().negate());this.moon.position.copy(this.sun.position).negate();this.moon.quaternion.setFromUnitVectors(new Vector3(0,0,1),this.moon.position.clone().normalize().negate());}
-    if(this.cloud){this.cloud.visible=this.clouds;this.cloud.position.set(-eye.x%128+this.assets.time.value*.3,128-eye.y,-eye.z%128);(this.cloud.material as MeshBasicMaterial).color.setScalar((.25+.75*day)*(1-rain*.35)*(1-thunder*.35)+weather.flash*.3);}
+    this.cloudRenderer.update(eye,this.assets.time.value,this.time,legacy,this.clouds,rain,thunder);
   }
   get brightness(){return this.daylight;}
 }

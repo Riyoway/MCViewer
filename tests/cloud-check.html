@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<title>Cloud GPU check</title>
+<link rel="icon" href="data:,">
+<pre id="result">Checking…</pre>
+<script type="module">
+import { Scene,Group,Color,Vector3,OrthographicCamera,WebGLRenderer,WebGLRenderTarget,Mesh,PlaneGeometry,MeshBasicMaterial,DoubleSide } from 'three';
+import { AssetManager } from '/src/core/AssetManager.ts';
+import { Clouds } from '/src/world/Clouds.ts';
+import { appendElement,emptyMesh } from '/src/minecraft/Mesher.ts';
+
+try {
+  const assets=await AssetManager.load(),renderer=new WebGLRenderer({antialias:false}),target=new WebGLRenderTarget(128,128),scene=new Scene(),sky=new Group(),clouds=new Clouds();
+  scene.background=new Color('#163399');sky.add(clouds.root);scene.add(sky);renderer.setRenderTarget(target);
+  clouds.setPattern({width:1,height:1,pixels:new Uint8Array([255,255,255,255])});clouds.fogEnd.value=1000000;
+  const camera=new OrthographicCamera(-5,5,5,-5,.05,1000);
+  const read=()=>{renderer.render(scene,camera);const pixels=new Uint8Array(128*128*4);renderer.readRenderTargetPixels(target,0,0,128,128,pixels);return pixels;};
+  const difference=(a,b,i)=>Math.max(...[0,1,2].map(c=>Math.abs(a[i+c]-b[i+c])));
+  let checks=0;
+  for(const theme of ['vanilla','mario','festive','halloween','chinese'])for(const above of [false,true])for(const time of [6000,18000]){
+    const eye=new Vector3(6,above?140:70,6);camera.position.copy(eye);camera.up.set(0,0,1);camera.lookAt(6,above?0:200,6);sky.position.copy(eye);
+    clouds.update(eye,0,time,true,true,0,0);
+    const noGlass=read();clouds.root.visible=false;const clear=read();clouds.root.visible=true;
+    // Move the bounding centre behind the cloud, just as a mixed world column can do.
+    const glass=assets.manifest.blocks.find(b=>b?.theme===theme&&b.name==='glass'),tile=glass.elements[0].faces.up.tile,y=eye.y+(above?-2:2),data=emptyMesh();
+    appendElement(data,{from:[0,y,0],to:[12,y,12],faces:{[above?'up':'down']:{tile,uv:[0,0,16,16]}}},[0,0,0],{rotation:[0,0,0],emissive:1,tint:[1,1,1]});data.color.fill(1);
+    const pane=assets.mesh(data,true);pane.geometry.boundingSphere.center.y=above?0:250;pane.frustumCulled=false;scene.add(pane);
+    clouds.root.visible=false;const glassOnly=read();clouds.root.visible=true;const combined=read();
+    let opaque=0,holes=0;
+    for(let i=0;i<combined.length;i+=4){
+      if(difference(glassOnly,clear,i)>12){opaque++;if(difference(combined,glassOnly,i)>1)throw Error(`Cloud overwrites ${theme} glass at ${i/4} (above=${above}, time=${time})`);}
+      else {holes++;if(difference(combined,noGlass,i)>1)throw Error(`Glass hole hides cloud at ${i/4} (${theme}, above=${above}, time=${time})`);}
+    }
+    if(opaque<100||holes<100)throw Error(`Missing glass test coverage: ${opaque}/${holes}`);checks++;
+    scene.remove(pane);pane.geometry.dispose();
+    // Cloud depth pass prevents the back face from blending a second time.
+    const background=clear.slice(0,3),shade=above?1:.7,tint=time===6000?[1,1,1]:[.1,.1,.15];
+    for(let channel=0;channel<3;channel++){
+      const c=shade*tint[channel],linear=c<=.04045?c/12.92:((c+.055)/1.055)**2.4,expected=linear*255*.8+background[channel]*.2;
+      if(Math.abs(noGlass[channel]-expected)>2)throw Error(`Cloud color/opacity is wrong: ${noGlass.slice(0,3)} vs channel ${channel}=${expected}`);
+    }checks++;
+    const roof=new Mesh(new PlaneGeometry(12,12),new MeshBasicMaterial({color:'#ff0000',side:DoubleSide}));roof.rotation.x=Math.PI/2;roof.position.set(6,y,6);scene.add(roof);
+    const covered=read();if(covered[0]<250||covered[1]>1||covered[2]>1)throw Error('Opaque roof fails to hide clouds');checks++;scene.remove(roof);roof.geometry.dispose();roof.material.dispose();
+  }
+  // Stained glass remains blended, and has to tint the cloud behind it.
+  const eye=new Vector3(6,70,6);camera.position.copy(eye);camera.lookAt(6,200,6);sky.position.copy(eye);clouds.update(eye,0,6000,true,true,0,0);const bare=read();
+  const stained=assets.manifest.blocks.find(b=>b?.theme==='vanilla'&&b.name==='red_stained_glass'),tile=stained.elements[0].faces.up.tile,data=emptyMesh();
+  appendElement(data,{from:[0,72,0],to:[12,72,12],faces:{down:{tile,uv:[0,0,16,16]}}},[0,0,0],{rotation:[0,0,0],emissive:1,tint:[1,1,1]});data.color.fill(1);
+  const pane=assets.mesh(data,true);scene.add(pane);const tinted=read();if(!(tinted[0]>tinted[1]+20&&tinted[1]<bare[1]-10))throw Error(`Stained glass fails to tint clouds: ${tinted.slice(0,3)} vs ${bare.slice(0,3)}`);checks++;
+  pane.geometry.dispose();clouds.color.geometry.dispose();clouds.color.material.dispose();clouds.depth.material.dispose();assets.opaque.map.dispose();assets.opaque.dispose();assets.transparent.dispose();target.dispose();renderer.dispose();
+  document.querySelector('#result').textContent=`PASS: ${checks} GPU checks (glass over clouds, transparency holes, above/below, night/day, single cloud opacity, opaque roofs and stained glass)`;
+} catch(error) {document.querySelector('#result').textContent=`FAIL: ${error.message}`;throw error;}
+</script>
+</html>
