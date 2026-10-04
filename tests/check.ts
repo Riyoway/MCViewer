@@ -15,6 +15,7 @@ import { PlayerModel, skinBox } from '../src/core/PlayerModel.ts';
 import { AudioManager } from '../src/core/AudioManager.ts';
 import { Sky } from '../src/world/Sky.ts';
 import { Weather } from '../src/world/Weather.ts';
+import { precipitationColumn,precipitationOffsets } from '../src/world/Precipitation.ts';
 import { Climate,precipitation,type WeatherAssets } from '../src/world/Climate.ts';
 import { unpackBiomes } from '../scripts/weather-assets.ts';
 import { unpackPalette } from '../scripts/anvil.ts';
@@ -27,6 +28,10 @@ import type { Manifest } from '../src/minecraft/types.ts';
 
 const manifest:Manifest=JSON.parse(await readFile('public/generated/manifest.json','utf8'));
 const weatherAssets:WeatherAssets=JSON.parse(await readFile('public/generated/weather/assets.json','utf8'));
+let atlasEnd=0;
+for(const tile of [...manifest.atlas.tiles].sort((a,b)=>a.start-b.start)){
+  assert(tile.start>=atlasEnd,'Animated sprites never overlap other atlas ranges');atlasEnd=tile.start+tile.frames;
+}
 assert.equal(manifest.missingTextures.length,0);
 const tutorials=JSON.parse(await readFile('minecraft-memory-assets/worlds/templates/tutorial/world_templates.json','utf8')) as {templateLocation:string;downloadURI:string}[];
 assert.equal(Object.keys(manifest.worlds).length,tutorials.length+4,'Every supplied tutorial and all four Mash-ups must be playable');
@@ -85,11 +90,32 @@ const roofBuffer=new Uint8Array(encodeColumn(roofCells,[[0,0,0]],()=>240));let r
 try{globalThis.fetch=async input=>new Response(String(input).endsWith('.vox.gz')?roofBuffer:networkMeshes);roofWorld=new World({...networkAssets,manifest:{...networkAssets.manifest,worlds:{test:{spawn:[8,1,8],chunks:[{origin:[0,0,0],file:'roof.bin.gz',voxels:'roof.vox.gz'}]}}}} as any,'test');await roofWorld.start(()=>{});}finally{globalThis.fetch=realFetch;}
 assert.equal(roofWorld.precipitationSurface(8,8),5,'Even a transparent glass roof stops rainfall');assert.equal(roofWorld.precipitationSurface(7,8),1);assert.equal(roofWorld.precipitationSurface(32,0),null,'Unloaded terrain never emits rain');
 const weather=new Weather({daylight:{value:1}} as any,{worlds:{},sounds:{}},()=>0);Object.assign(weather,{climate:new Climate({biomes:climates,columns:{'0,0':{sections:{0:0}}}})});
-weather.setMode('rain');weather.update(4,new Vector3(8,2.62,8),roofWorld,true);assert(weather.stats.rainColumns>0&&weather.stats.snowColumns===0);assert(weather.stats.sheltered);assert(weather.rain.geometry.getAttribute('position').array.every(Number.isFinite));
+weather.setMode('rain');weather.update(5,new Vector3(8,2.62,8),roofWorld,true);assert(weather.stats.rainColumns>0&&weather.stats.snowColumns===0);assert(weather.stats.sheltered);assert(weather.rain.geometry.getAttribute('position').array.every(Number.isFinite));
 for(let i=0;i<weather.rain.geometry.drawRange.count;i++){const p=weather.rain.geometry.getAttribute('position');assert(p.getY(i)>=roofWorld.precipitationSurface(Math.floor(p.getX(i)),Math.floor(p.getZ(i)))!,'Rain stays above the surface or roof');}
 weather.setMode('snow');weather.update(.1,new Vector3(8,2.62,8),roofWorld,true);assert(weather.stats.snowColumns>0&&weather.stats.rainColumns===0);assert.equal(weather.rainVolume,0,'Snowfall has no rain sound');
-weather.setMode('clear');weather.update(4,new Vector3(8,2.62,8),roofWorld,true);assert.equal(weather.rain.visible,false);assert.equal(weather.snow.visible,false);
+const snowGeometry=weather.snow.geometry,positions=Array.from(snowGeometry.getAttribute('position').array),uvs=Array.from(snowGeometry.getAttribute('uv').array);
+weather.update(.1,new Vector3(8.1,2.72,8.1),roofWorld,true);
+assert.deepEqual(Array.from(snowGeometry.getAttribute('position').array),positions,'Snow columns stay anchored when moving within one block');
+assert.notDeepEqual(Array.from(snowGeometry.getAttribute('uv').array),uvs,'Snow falls and drifts through its texture rather than moving the whole quad');
+weather.setMode('clear');weather.update(5,new Vector3(8,2.62,8),roofWorld,true);assert.equal(weather.rain.visible,false);assert.equal(weather.snow.visible,false);
 weather.cycle=true;weather.minutes=1;weather.update(60,new Vector3(8,2.62,8),roofWorld,false);assert.equal(weather.mode,'clear','Automatic weather pauses with gameplay');weather.update(60,new Vector3(8,2.62,8),roofWorld,true);assert.equal(weather.mode,'thunder');roofWorld.dispose();
+const columns=Array.from({length:256},(_,i)=>precipitationColumn((i&15)-8,(i>>4)-8));
+// Reference values evaluated with java.util.Random, the native 48-bit generator.
+for(const [x,z,rainSpeed,rainPhase,snowU,snowDriftU,snowV,snowDriftV] of [
+  [0,0,3.7309677600860596,0,.730967787376657,-1.2895731239084833,.5504370051176339,.6829853173685814],
+  [-432,127,3.2487897872924805,198,.2487898639196956,.09372043225006638,.7666080329559587,-1.7248500484786713],
+  [97,-106,3.111666679382324,94,.11166674171771296,.4037997839178245,.1423129496077371,1.7490462083356968],
+  [432,-432,3.9191434383392334,224,.9191434481112394,.44870043041769253,.20469931781322348,.5339458703994436]
+]){
+  const actual=precipitationColumn(x,z),expected={rainSpeed,rainPhase,snowU,snowDriftU,snowV,snowDriftV};
+  for(const key of Object.keys(expected) as (keyof typeof expected)[])assert(Math.abs(actual[key]-expected[key])<1e-14,`Native weather random sequence matches at ${x},${z}: ${key}`);
+}
+assert(new Set(columns.map(c=>c.snowU.toFixed(5))).size>250,'Nearby snow columns have distinct horizontal phases');
+assert(new Set(columns.map(c=>c.snowDriftV.toFixed(5))).size>250,'Nearby snow columns have distinct falling speeds');
+assert(columns.every(c=>c.rainSpeed>=3&&c.rainSpeed<4));
+const motion=precipitationColumn(-432,127);
+assert.deepEqual(precipitationColumn(-432,127),motion,'World-coordinate weather seeds stay deterministic across revisits');
+for(const kind of ['rain','snow'] as const){const before=precipitationOffsets(motion,kind,2),after=precipitationOffsets(motion,kind,2.001);assert(after.every((n,i)=>Math.abs(n-before[i])<.01),'Precipitation interpolates smoothly between game ticks');}
 const packs=new Packs(),stone=await packs.block('vanilla',{Name:'minecraft:stone_bricks'}),slab=await packs.block('vanilla',{Name:'minecraft:oak_slab'});
 const stair=await packs.block('vanilla',{Name:'minecraft:spruce_stairs',Properties:{facing:'east',half:'bottom',shape:'straight',waterlogged:'false'}}),stairKey=`vanilla:${packs.blocks[stair].state}`;
 await packs.block('vanilla',{Name:'minecraft:spruce_stairs',Properties:{facing:'east',half:'bottom',shape:'straight'}});assert.equal(packs.lookup[stairKey],stair,'Older saves with omitted defaults preserve existing canonical state IDs');
@@ -181,6 +207,25 @@ for(const [facing,direction] of Object.entries({north:[0,0,-1],east:[1,0,0],sout
 }
 await packs.init('mario');const prismarine=await packs.tile('mario','prismarine');
 assert.equal(packs.tiles[prismarine].ticks,300,'Slow frames retain their duration without hundreds of duplicate images');assert(packs.tiles[prismarine].frames<64);
+const concurrent=new Packs();await concurrent.init('vanilla');
+const concurrentIds=await Promise.all(['water_still','water_flow','lava_still','lava_flow'].map(t=>concurrent.tile('vanilla',t)));
+let concurrentEnd=0;for(const tile of concurrentIds.map(i=>concurrent.tiles[i]).sort((a,b)=>a.start-b.start)){assert(tile.start>=concurrentEnd,'Concurrent decoding reserves disjoint animated ranges');concurrentEnd=tile.start+tile.frames;}
+assert.equal(concurrent.images.length,concurrentEnd);assert(concurrent.images.every(Buffer.isBuffer));
+const atlasRaw=await sharp('public/generated/atlas.png').ensureAlpha().raw().toBuffer();
+for(const theme of ['vanilla','mario','festive','halloween','chinese']){
+  const native=new Packs();await native.init(theme);
+  for(const kind of ['water','lava']){
+    const block=manifest.blocks.find(b=>b?.theme===theme&&b.name===kind&&b.fluidLevel===0)!;
+    for(const [index,id] of block.fluidTiles!.entries()){
+      const name=[`${kind}_still`,`${kind}_flow`,'water_overlay'][index],expected=native.tiles[await native.tile(theme,name)],actual=manifest.atlas.tiles[id];
+      assert.equal(actual.frames,expected.frames,`${theme} ${name} preserves native frame order`);assert.equal(actual.ticks,expected.ticks,`${theme} ${name} preserves native frame duration`);
+      for(let frame=0;frame<actual.frames;frame++){
+        const image=await sharp(native.images[expected.start+frame]).ensureAlpha().raw().toBuffer(),tile=actual.start+frame,{size,cell}=manifest.atlas,cols=size/cell;
+        for(let y=0;y<cell;y++){const offset=((Math.floor(tile/cols)*cell+y)*size+tile%cols*cell)*4;assert(atlasRaw.subarray(offset,offset+cell*4).equals(image.subarray(y*cell*4,(y+1)*cell*4)),`${theme} ${name} frame ${frame} contains its own native sprite, never another animation`);}
+      }
+    }
+  }
+}
 
 const ground=new Voxels();ground.fill([-20,-1,-20],[20,0,20],stone);ground.fill([2,0,-5],[3,3,5],stone);ground.set(0,0,0,slab);ground.set(-2,0,0,stone);
 const collision=new Collision(ground,packs.blocks),body=new Movement(collision);body.position.splice(0,3,0,0,4);

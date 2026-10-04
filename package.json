@@ -9,6 +9,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "assets": "tsx scripts/prepare.ts",
     "weather-assets": "tsx scripts/weather-assets.ts",
+    "fluid-assets": "tsx scripts/fluid-assets.ts",
     "test": "tsx tests/check.ts"
   },
   "dependencies": {

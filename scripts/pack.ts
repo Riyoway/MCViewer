@@ -111,12 +111,14 @@ export class Packs {
     ].map(n=>n*Math.floor(30/n)) as [number,number]:undefined;
     const id=this.tiles.length, start=this.images.length;
     this.tiles.push({start,frames:order.length,ticks,...(size?{size}:{})});this.tileCache.set(key,id);
+    // Reserve the complete range before asynchronous image decoding starts.
+    this.images.length+=order.length;
     const resized=new Map<number,Buffer>();
-    for(const frame of order) {
+    for(const [offset,frame] of order.entries()) {
       if(frame<0 || frame>=frameCount) throw new Error(`Invalid texture frame: ${path}`);
       const [w,h]=size??[32,32];
       if(!resized.has(frame)) resized.set(frame,await sharp(await readFile(path)).extract({...crop,left:frame%columns*frameWidth+crop.left,top:Math.floor(frame/columns)*frameHeight+crop.top}).resize(w,h,{kernel:'nearest'}).extend({top:16+(32-h)/2,bottom:16+(32-h)/2,left:16+(32-w)/2,right:16+(32-w)/2,extendWith:'copy'}).png().toBuffer());
-      this.images.push(resized.get(frame)!);
+      this.images[start+offset]=resized.get(frame)!;
     }
     return id;
   }

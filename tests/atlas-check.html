@@ -15,7 +15,7 @@ try {
   const image=document.createElement('canvas');image.width=image.height=size;
   const paint=image.getContext('2d'),texture=new CanvasTexture(image);
   texture.magFilter=NearestFilter;texture.minFilter=NearestMipmapLinearFilter;
-  assets.opaque.map.dispose();assets.opaque.map=texture;
+  const original=assets.opaque.map;assets.opaque.map=texture;
   const tile=assets.manifest.atlas.tiles.findIndex(t=>t.frames===1);
   if(tile<0)throw Error('Static atlas tile missing');
   const data=emptyMesh();
@@ -71,8 +71,23 @@ try {
     if(pixels[i+channel]<245||pixels[i+1]>0)throw Error(`Uneven chest texel at ${x},${y}: ${pixels.slice(i,i+3)}`);
   }
   checks++;chest.geometry.dispose();
-  mesh.geometry.dispose();texture.dispose();target.dispose();renderer.dispose();
-  document.querySelector('#result').textContent=`PASS: ${checks} GPU checks (atlas, chest texel spacing, native tint, Gamma, day/night and warm torch light)`;
+  // Native liquid frames must hold for their complete .mcmeta duration on the GPU.
+  scene.remove(chest);scene.add(mesh);assets.opaque.map=original;
+  for(let i=0;i<colors.count;i++){colors.setXYZ(i,1,1,1);glow.setX(i,1);}colors.needsUpdate=glow.needsUpdate=true;
+  for(const theme of ['vanilla','mario','festive','halloween','chinese'])for(const kind of ['water','lava']){
+    const block=assets.manifest.blocks.find(b=>b?.theme===theme&&b.name===kind&&b.fluidLevel===0);
+    for(const id of block.fluidTiles.slice(0,2)){
+      const entry=assets.manifest.atlas.tiles[id],period=entry.ticks/20;
+      for(let i=0;i<info.count;i++)info.setXYZ(i,entry.start,entry.frames,entry.ticks);info.needsUpdate=true;
+      assets.time.value=0;renderer.render(scene,camera);renderer.readRenderTargetPixels(target,0,0,960,720,pixels);const first=pixels.slice();
+      assets.time.value=period-.0001;renderer.render(scene,camera);renderer.readRenderTargetPixels(target,0,0,960,720,pixels);
+      if(!pixels.every((n,i)=>n===first[i]))throw Error(`Liquid frame changed too early: ${theme} ${kind} tile ${id}`);checks++;
+      assets.time.value=period+.0001;renderer.render(scene,camera);renderer.readRenderTargetPixels(target,0,0,960,720,pixels);
+      if(pixels.every((n,i)=>n===first[i]))throw Error(`Liquid animation did not advance: ${theme} ${kind} tile ${id}`);checks++;
+    }
+  }
+  mesh.geometry.dispose();texture.dispose();original.dispose();target.dispose();renderer.dispose();
+  document.querySelector('#result').textContent=`PASS: ${checks} GPU checks (atlas, native liquid timing, chest texel spacing, native tint, Gamma, day/night and warm torch light)`;
 } catch(error) {
   document.querySelector('#result').textContent=`FAIL: ${error.message}`;
   throw error;

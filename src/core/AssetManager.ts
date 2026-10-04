@@ -7,7 +7,7 @@ const external=import.meta.env?.VITE_ASSET_BASE_URL,base=(external||`${import.me
 const version=typeof __ASSET_VERSION__==='undefined'?'local':__ASSET_VERSION__;
 export const assetUrl=(file:string)=>`${base}/${!external&&import.meta.env?.PROD?`${version}/`:''}${file}`;
 // Mojang's lightmap.fsh: independent sky/block light, warm block-light curve and Gamma.
-const lightmap=`uniform float daylight;uniform float gamma;
+export const lightmap=`uniform float daylight;uniform float gamma;
 vec3 minecraftLight(vec2 level,float glow) {
   vec2 brightness=level/max(vec2(.01),4.0-3.0*level);
   float block=brightness.y*1.5;

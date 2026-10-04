@@ -43,6 +43,8 @@ npm run preview
 
 天候は「晴れ・雨・雷雨・雪（全域）」から変更できます。雨と雷雨は保存されたバイオームの気温に従って雪に変わり、砂漠などでは降水を出しません。屋根・ガラス・水面で雨粒が止まり、屋内では雨音が小さくなります。雷雨には空・雲・日光の減光、落雷の閃光と雷鳴があります。降水量と自動変化の間隔も設定でき、選択はブラウザに保存されます。天候音は効果音の音量に従います。天候素材とバイオームだけ再生成する場合は`npm run weather-assets`を使います。地形のメッシュを作り直す必要はありません。[Minecraftの天候](https://learn.microsoft.com/en-us/minecraft/creator/commands/commands/weather?view=minecraft-bedrock-stable)
 
+雨・雪の描画はMojang公式1.21.6クライアントのWeatherEffectRendererとLegacyRandomSourceを参照しています。21×21の降水範囲、座標ごとの48bit乱数、雪の独立した横流れ・落下速度、雨の3〜4倍の速度係数、4ブロックごとのUV、距離による透明度、雪の光レベル補正を使います。乱数をフレームごとに作り直さず、元テクスチャの均等な模様が画面全体で揃うのを防ぎます。降水の開始・終了は5秒で移行します。天候による積雪・凍結などの地形の変更は行いません。
+
 元のResource PackのピクセルをNearestで拡大し、縮小は切り替え可能なミップマップで描画します。アトラスの余白とUV微分で別のタイルが混ざることを防ぎます。アニメーションは実素材の`.mcmeta`に従います。素材側の範囲外フレームはMinecraftの読み込みに合わせて除外します。
 
 テクスチャ番号は面内で補間せず、アトラスの行境界で隣の画像が混ざることを防ぎます。開発サーバーの`/tests/atlas-check.html`で、近距離・遠距離・アニメーションを含むGPUの描画検証を実行できます。
@@ -50,6 +52,8 @@ npm run preview
 チェストの14×10pxなどの各面は整数倍で格納し、元のピクセル境界をそのまま描画します。Single／Double／Trapped／Enderと各Resource Packで共通です。
 
 アニメーションの待ち時間は共通のティック間隔にまとめ、同じ画像を待ち時間分だけ複製しません。素材のみの修正は`npm run assets -- --materials`で再出力でき、既存チャンクのVoxelパレットが一致することを検証します。パレットが変わった場合は通常の全変換が必要です。
+
+液体素材だけの再生成には`npm run fluid-assets`を使います。Still・Flow・Overlayを元の画像から読み直し、地形内のテクスチャIDを保ってアトラスを配置し直します。画像を非同期に読み込む前に各アニメーションの領域全体を予約し、別の画像やアニメーションが重ならないようにしています。再生速度と往復するフレーム順は各パックの`.mcmeta`を維持します。全パックの全液体フレームを元画像と照合し、GPUでもフレームの表示時間を検証しています。[公式のアニメーション設定解説](https://learn.microsoft.com/en-us/minecraft/creator/documents/createanimatedblocktexture?view=minecraft-bedrock-stable)
 
 Minecraftの面ごとの明暗（上1、下0.5、東西0.6、南北0.8）と頂点AOを使用します。天空光・ブロック光はそれぞれ0〜15で、窓や洞窟の入口から1段階ずつ伝播します。葉や水による減衰も反映します。テクスチャ・Tint・光をMinecraftと同じ表示色の空間で乗算し、白っぽくなる色空間の混同を避けています。Gammaは明るさのカーブを変更し、夜の暗さや屋内の明るさを調整できます。昼夜サイクルは標準20分。時刻、停止・再開、1日の長さを変更できます。太陽・月・雲は提供されたDefault素材、音楽は各Packの実OGGです。
 
@@ -73,7 +77,7 @@ Entityのテクスチャは面ごとの領域を切り出してからアトラ�
 
 水・溶岩は保存された水位と隣接ブロックから角の高さを加重平均し、流れの勾配に沿ってFlowテクスチャを回転させます。湖にはStill、滝の側面にはFlowを使い、同じ液体の内部面は出力しません。Waterloggedにも対応し、泳ぎと水中表示は液面の高さを参照します。柵の接続状態を隣接ブロックから復元し、木製／ネザーレンガの区別、接続を受け付けないブロック、ゲートの向きを反映します。柵の衝突箱は本家の1.5ブロックの高さを使います。Mojang公式1.21.6のLiquidBlockRenderer、FlowingFluid、FenceBlock、FenceGateBlockと同梱のnative衝突データで確認しています。
 
-これは探索ビューアです。ブロックの設置・破壊、インベントリ、回路、Mob、ダメージや天候は実装していません。液体の形状と流れる向きは元ワールドの状態から復元し、ワールドを変更する液体の広がりのシミュレーションは行いません。複数Biomeの色、Block Entityの模様やSignの文字など、Minecraft本体の全描画仕様との完全一致は対象外で、未対応モデルは生成Manifestの`unsupported`に記録します。
+これは探索ビューアです。ブロックの設置・破壊、インベントリ、回路、Mob、ダメージは実装していません。液体の形状と流れる向きは元ワールドの状態から復元し、ワールドを変更する液体の広がりのシミュレーションは行いません。複数Biomeの色、Block Entityの模様やSignの文字など、Minecraft本体の全描画仕様との完全一致は対象外で、未対応モデルは生成Manifestの`unsupported`に記録します。
 
 素材・URL・チェックサムは提供されたファイルを使用します。Default BGMはMinecraft公式1.13 Asset Indexの`music/game/calm1.ogg`。キーボード操作は[Minecraft公式の操作ガイド](https://www.minecraft.net/article/minecraft-controls)と[Educationのキー一覧](https://edusupport.minecraft.net/hc/en-us/articles/360047116832-Minecraft-keyboard-and-mouse-controls)に合わせています。
 
