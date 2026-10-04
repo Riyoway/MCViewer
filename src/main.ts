@@ -61,7 +61,7 @@ async function init() {
   async function choose(name:string) {
     const token=++request;selected=name;entered=false;enter.disabled=true;error.hidden=true;loading.textContent='ワールドを読み込み中…';
     document.querySelectorAll<HTMLButtonElement>('[data-world]').forEach(button=>{const active=button.dataset.world===name;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));});
-    worldReady=false;player?.stop();audio.weather(0,false);if(world){scene.remove(world.root);world.dispose();}world=new World(assets,name);world.radius=config.view;scene.add(world.root);sky.select(name);
+    worldReady=false;player?.stop();audio.weather([],camera,false);if(world){scene.remove(world.root);world.dispose();}world=new World(assets,name);world.radius=config.view;scene.add(world.root);sky.select(name);
     const current=world;
     try {
       await Promise.all([current.start((done,total)=>{if(token===request)loading.textContent=`ワールドを読み込み中… ${Math.round(done/total*100)}%`;}),weather.select(name)]);
@@ -112,7 +112,7 @@ async function init() {
     const aboveWater=world?.voxels.get(Math.floor(camera.position.x),Math.floor(camera.position.y)+1,Math.floor(camera.position.z));
     const inWater=!!underwater&&camera.position.y-Math.floor(camera.position.y)<fluidHeight(assets.manifest.blocks[underwater],assets.manifest.blocks[aboveWater??0],'water');document.body.classList.toggle('underwater',inWater);
     if(inWater){fog.color.set(sky.environment?.water_fog_color??'#20417b');fog.near=0;fog.far=sky.environment?.water_fog_distance??24;}
-    audio.weather(inWater||!worldReady?0:weather.rainVolume,weather.sheltered);
+    audio.weather(weather.consumeRainSounds(),camera,!!player?.locked&&worldReady&&!inWater);
     renderer.render(scene,camera);frames++;fpsTime+=dt;if(fpsTime>1){fps=Math.round(frames/fpsTime);frames=0;fpsTime=0;}
     if(ui==='settings-menu'){$<HTMLInputElement>('time').value=String(sky.time);updateTime();}
     if(debug&&player&&world)$('debug').textContent=`${fps} FPS\nXYZ ${player.position.map(n=>n.toFixed(1)).join(' / ')}\n${world.data.name}\n${player.movement.flying?'Flying':player.movement.swimming?'Swimming':'Walking'}`;

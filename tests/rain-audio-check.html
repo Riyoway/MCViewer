@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<title>Rain audio check</title>
+<link rel="icon" href="data:,">
+<pre id="result">Checking…</pre>
+<script type="module">
+import { PerspectiveCamera } from 'three';
+import { AudioManager } from '/src/core/AudioManager.ts';
+import { RainSounds } from '/src/world/RainSound.ts';
+
+try {
+  const rate=48000,seconds=12,decode=new OfflineAudioContext(1,1,rate),data=await(await fetch('/generated/weather/assets.json')).json(),clips=new Map();
+  for(const file of new Set([...data.sounds.rain,...data.sounds.rain_above]))clips.set(file,await decode.decodeAudioData(await(await fetch(`/generated/${file}`)).arrayBuffer()));
+  const buffers=new Map(Object.entries(data.sounds).filter(([key])=>key!=='thunder').map(([key,files])=>[key,Promise.resolve(files.map(file=>clips.get(file)))]));
+  async function render(mode){
+    const context=new OfflineAudioContext(2,rate*seconds,rate),manager=new AudioManager({}),sampler=new RainSounds(),camera=new PerspectiveCamera(),starts=[];camera.position.set(0,2.62,0);let time=0;
+    const proxy={state:'running',get currentTime(){return time;},listener:context.listener,destination:context.destination,createGain:()=>context.createGain(),createPanner:()=>context.createPanner(),
+      createBufferSource(){const source=context.createBufferSource(),start=source.start.bind(source);source.start=when=>{starts.push({time:when,pitch:source.playbackRate.value,loop:source.loop});start(when);};return source;}};
+    manager.context=proxy;manager.buffers=buffers;
+    const originalRandom=Math.random;let seed=42;Math.random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+    try {for(let tick=0;tick<seconds*20;tick++){
+      time=tick/20;const indoors=mode==='indoor'||mode==='transition'&&time>=4&&time<8,sound=sampler.tick(1,camera.position,()=>indoors?5:1,()=>'rain');
+      manager.weather(sound?[sound]:[],camera,true);await Promise.resolve();
+    }}finally{Math.random=originalRandom;}
+    if(manager.error)throw Error(manager.error);
+    return {buffer:await context.startRendering(),starts};
+  }
+  function envelope(buffer){
+    const samples=buffer.getChannelData(0),windows=[];
+    for(let start=rate*2.5;start<rate*11.5;start+=rate*.05){let sum=0;for(let i=start;i<start+rate*.05;i++)sum+=samples[i]**2;windows.push(Math.sqrt(sum/(rate*.05)));}
+    const sorted=windows.slice().sort((a,b)=>a-b);return {min:sorted[0],median:sorted[Math.floor(sorted.length/2)],ratio:sorted[0]/sorted[Math.floor(sorted.length/2)]};
+  }
+  function roughness(buffer){const samples=buffer.getChannelData(0);let energy=0,delta=0;for(let i=rate*3;i<rate*11;i++){energy+=samples[i]**2;delta+=(samples[i]-samples[i-1])**2;}return delta/energy;}
+  const outdoor=await render('outdoor'),indoor=await render('indoor'),transition=await render('transition');
+  // Reproduce the original faded sample repeating every two seconds for comparison.
+  const oldContext=new OfflineAudioContext(1,rate*seconds,rate),oldSource=oldContext.createBufferSource();oldSource.buffer=clips.get(data.sounds.rain[0]);oldSource.loop=true;oldSource.connect(oldContext.destination);oldSource.start();
+  const old=envelope(await oldContext.startRendering()),outside=envelope(outdoor.buffer),inside=envelope(indoor.buffer),moving=envelope(transition.buffer),highOutside=roughness(outdoor.buffer),highInside=roughness(indoor.buffer);
+  if(old.ratio>.1)throw Error(`Old loop test did not reproduce the fade gap: ${old.ratio}`);
+  for(const [name,level] of Object.entries({outside,inside,moving}))if(level.ratio<.25||level.median<.0001)throw Error(`Rain drops out in ${name}: ${JSON.stringify(level)}`);
+  if(highInside>=highOutside*.75)throw Error(`Indoor rain has not softened: ${highInside}/${highOutside}`);
+  if(inside.median>=outside.median)throw Error(`Indoor rain is not quieter: ${inside.median}/${outside.median}`);
+  if(outdoor.starts.some(s=>s.loop||s.pitch!==1)||indoor.starts.some(s=>s.loop||s.pitch!==.5)||!transition.starts.some(s=>s.pitch===.5)||!transition.starts.some(s=>s.pitch===1))throw Error('Incorrect native rain playback/transition');
+  document.querySelector('#result').textContent=`PASS: native rain audio continuity, indoor pitch/volume, outdoor/indoor transitions and faded-loop regression\n${JSON.stringify({old,outside,inside,moving,highOutside,highInside,voices:outdoor.starts.length},null,2)}`;
+}catch(error){document.querySelector('#result').textContent=`FAIL: ${error.message}`;throw error;}
+</script>
+</html>

@@ -18,6 +18,7 @@ import { Clouds,cloudGeometry,cloudTint } from '../src/world/Clouds.ts';
 import { AssetManager } from '../src/core/AssetManager.ts';
 import { Weather } from '../src/world/Weather.ts';
 import { precipitationColumn,precipitationOffsets } from '../src/world/Precipitation.ts';
+import { RainSounds } from '../src/world/RainSound.ts';
 import { Climate,precipitation,type WeatherAssets } from '../src/world/Climate.ts';
 import { unpackBiomes } from '../scripts/weather-assets.ts';
 import { unpackPalette } from '../scripts/anvil.ts';
@@ -30,6 +31,8 @@ import type { Manifest } from '../src/minecraft/types.ts';
 
 const manifest:Manifest=JSON.parse(await readFile('public/generated/manifest.json','utf8'));
 const weatherAssets:WeatherAssets=JSON.parse(await readFile('public/generated/weather/assets.json','utf8'));
+assert.deepEqual(weatherAssets.sounds.rain,Array.from({length:8},(_,i)=>`weather/rain${i+1}.ogg`),'Official 1.13 weather.rain includes all eight native samples');
+assert.deepEqual(weatherAssets.sounds.rain_above,Array.from({length:4},(_,i)=>`weather/rain${i+1}.ogg`),'Official 1.13 weather.rain.above uses rain1..4');
 let atlasEnd=0;
 for(const tile of [...manifest.atlas.tiles].sort((a,b)=>a.start-b.start)){
   assert(tile.start>=atlasEnd,'Animated sprites never overlap other atlas ranges');atlasEnd=tile.start+tile.frames;
@@ -88,19 +91,29 @@ assert.equal(precipitation(climates[0],64),'rain');assert.equal(precipitation(cl
 const biomeWords=Array<bigint>(6).fill(0n);for(let i=0;i<64;i++)biomeWords[Math.floor(i/12)]|=BigInt(i%17)<<BigInt(i%12*5);
 assert.deepEqual(Array.from(unpackBiomes(biomeWords,17)),Array.from({length:64},(_,i)=>i%17));assert.throws(()=>unpackBiomes([],2));
 const roofCells=new Voxels(),roofBlock=manifest.blocks.findIndex(b=>b?.name==='glass'&&b.theme==='vanilla');assert(roofBlock>0);roofCells.fill([0,0,0],[16,1,16],roofBlock);roofCells.set(8,4,8,roofBlock);
+roofCells.set(6,2,8,manifest.blocks.findIndex(b=>b?.name==='oak_fence'&&b.theme==='vanilla'));
 const roofBuffer=new Uint8Array(encodeColumn(roofCells,[[0,0,0]],()=>240));let roofWorld:World;
 try{globalThis.fetch=async input=>new Response(String(input).endsWith('.vox.gz')?roofBuffer:networkMeshes);roofWorld=new World({...networkAssets,manifest:{...networkAssets.manifest,worlds:{test:{spawn:[8,1,8],chunks:[{origin:[0,0,0],file:'roof.bin.gz',voxels:'roof.vox.gz'}]}}}} as any,'test');await roofWorld.start(()=>{});}finally{globalThis.fetch=realFetch;}
 assert.equal(roofWorld.precipitationSurface(8,8),5,'Even a transparent glass roof stops rainfall');assert.equal(roofWorld.precipitationSurface(7,8),1);assert.equal(roofWorld.precipitationSurface(32,0),null,'Unloaded terrain never emits rain');
+assert.equal(roofWorld.precipitationSurface(6,8),3.5);assert.equal(roofWorld.rainSoundSurface(6,8),3,'Rain audio uses the block heightmap, independent of a taller fence collider');
 const weather=new Weather({daylight:{value:1}} as any,{worlds:{},sounds:{}},()=>0);Object.assign(weather,{climate:new Climate({biomes:climates,columns:{'0,0':{sections:{0:0}}}})});
 weather.setMode('rain');weather.update(5,new Vector3(8,2.62,8),roofWorld,true);assert(weather.stats.rainColumns>0&&weather.stats.snowColumns===0);assert(weather.stats.sheltered);assert(weather.rain.geometry.getAttribute('position').array.every(Number.isFinite));
 for(let i=0;i<weather.rain.geometry.drawRange.count;i++){const p=weather.rain.geometry.getAttribute('position');assert(p.getY(i)>=roofWorld.precipitationSurface(Math.floor(p.getX(i)),Math.floor(p.getZ(i)))!,'Rain stays above the surface or roof');}
-weather.setMode('snow');weather.update(.1,new Vector3(8,2.62,8),roofWorld,true);assert(weather.stats.snowColumns>0&&weather.stats.rainColumns===0);assert.equal(weather.rainVolume,0,'Snowfall has no rain sound');
+weather.setMode('snow');weather.update(.1,new Vector3(8,2.62,8),roofWorld,true);assert(weather.stats.snowColumns>0&&weather.stats.rainColumns===0);assert.equal(weather.consumeRainSounds().length,0,'Snowfall has no rain sound');
 const snowGeometry=weather.snow.geometry,positions=Array.from(snowGeometry.getAttribute('position').array),uvs=Array.from(snowGeometry.getAttribute('uv').array);
 weather.update(.1,new Vector3(8.1,2.72,8.1),roofWorld,true);
 assert.deepEqual(Array.from(snowGeometry.getAttribute('position').array),positions,'Snow columns stay anchored when moving within one block');
 assert.notDeepEqual(Array.from(snowGeometry.getAttribute('uv').array),uvs,'Snow falls and drifts through its texture rather than moving the whole quad');
 weather.setMode('clear');weather.update(5,new Vector3(8,2.62,8),roofWorld,true);assert.equal(weather.rain.visible,false);assert.equal(weather.snow.visible,false);
 weather.cycle=true;weather.minutes=1;weather.update(60,new Vector3(8,2.62,8),roofWorld,false);assert.equal(weather.mode,'clear','Automatic weather pauses with gameplay');weather.update(60,new Vector3(8,2.62,8),roofWorld,true);assert.equal(weather.mode,'thunder');roofWorld.dispose();
+const rainSoundSampler=new RainSounds(),rainEye=new Vector3(0,2.62,0),rainHits:{tick:number;sound:NonNullable<ReturnType<RainSounds['tick']>>}[]=[];
+for(let tick=0;tick<20;tick++){const sound=rainSoundSampler.tick(1,rainEye,()=>1,()=>'rain');if(sound)rainHits.push({tick,sound});}
+assert.deepEqual(rainHits.map(({tick,sound})=>[tick,sound.position]),[[2,[-2.5,.5,-6.5]],[6,[5.5,.5,5.5]],[8,[7.5,.5,-5.5]],[12,[-5.5,.5,6.5]],[15,[3.5,.5,6.5]],[18,[-3.5,.5,10.5]]],'Native 20Hz rain sound positions/timing match an independent java.util.Random reference');
+assert(rainHits.every(({sound})=>sound.key==='rain'&&sound.volume===.2&&sound.pitch===1));
+const indoorSampler=new RainSounds(),indoorHits=[];
+for(let tick=0;tick<20;tick++){const sound=indoorSampler.tick(1,rainEye,()=>5,()=>'rain');if(sound)indoorHits.push(sound);}
+assert(indoorHits.length>0&&indoorHits.every(sound=>sound.key==='rain_above'&&sound.volume===.1&&sound.pitch===.5&&sound.position[1]===4.5),'Rain hitting a roof above the listener uses the quieter, lower-pitched native event');
+for(const [surface,kind] of [[()=>null,()=>'rain'],[()=>30,()=>'rain'],[()=>1,()=>'snow'],[()=>1,()=>'none']] as const){const sampler=new RainSounds();for(let i=0;i<60;i++)assert.equal(sampler.tick(1,rainEye,surface,kind),null,'Unloaded terrain, distant roofs and dry/snow climates make no rain impacts');}
 const columns=Array.from({length:256},(_,i)=>precipitationColumn((i&15)-8,(i>>4)-8));
 // Reference values evaluated with java.util.Random, the native 48-bit generator.
 for(const [x,z,rainSpeed,rainPhase,snowU,snowDriftU,snowV,snowDriftV] of [
@@ -314,6 +327,22 @@ rejectMusic=false;await audioCheck.start();assert.equal(music.paused,false);
 audioCheck.effect('wood');await Promise.resolve();assert.equal(effectStarts,1,'Audible footsteps create a sound source');
 audioCheck.setEffectVolume(0);audioCheck.effect('wood');await Promise.resolve();assert.equal(effectStarts,1,'Effects can be muted independently');
 
+const rainStarts:any[]=[],rainGains:any[]=[],rainPanners:any[]=[],parameter=()=>({value:0,setValueAtTime(value:number){this.value=value;},setTargetAtTime(value:number){this.value=value;}});
+const rainContext={state:'running',currentTime:1.2,destination:{},listener:Object.fromEntries(['positionX','positionY','positionZ','forwardX','forwardY','forwardZ','upX','upY','upZ'].map(key=>[key,parameter()])),
+  createBufferSource(){return {buffer:null,loop:false,playbackRate:{value:1},connect(){},disconnect(){},onended:null as (()=>void)|null,start(time:number){rainStarts.push({source:this,time});},stop(){this.onended?.();}};},
+  createGain(){const gain={gain:parameter(),connect(){},disconnect(){}};rainGains.push(gain);return gain;},
+  createPanner(){const panner={positionX:parameter(),positionY:parameter(),positionZ:parameter(),connect(){},disconnect(){}};rainPanners.push(panner);return panner;}};
+const rainAudio=new AudioManager({}),rainCamera=new PerspectiveCamera();rainCamera.position.set(10,2.62,3);
+Object.assign(rainAudio,{context:rainContext,buffers:new Map([['rain',Promise.resolve([{duration:2}])],['rain_above',Promise.resolve([{duration:2}])]])});
+rainAudio.weather([rainHits[0].sound],rainCamera,true);await Promise.resolve();rainAudio.weather([indoorHits[0]],rainCamera,true);await Promise.resolve();
+assert.equal(rainStarts.length,2);assert(rainStarts.every(({source,time})=>!source.loop&&time===1.2),'Native faded clips overlap as one-shots, never a single seamless-loop assumption');
+assert.deepEqual(rainStarts.map(({source})=>source.playbackRate.value),[1,.5]);assert.deepEqual(rainGains.slice(1).map(g=>g.gain.value),[.2,.1]);
+assert(rainPanners.every(p=>p.distanceModel==='linear'&&p.refDistance===0&&p.maxDistance===16),'Rain attenuates over the native sixteen-block range');assert.equal(rainContext.listener.positionX.value,10);
+rainAudio.setEffectVolume(0);assert.equal(rainGains[0].gain.value,0);rainAudio.weather([rainHits[1].sound],rainCamera,true);await Promise.resolve();assert.equal(rainStarts.length,2);
+rainAudio.setEffectVolume(.7);let finishRain!:(buffers:any[])=>void;(rainAudio as any).buffers.set('rain',new Promise(resolve=>finishRain=resolve));rainAudio.weather([rainHits[1].sound],rainCamera,true);rainAudio.select('empty');rainAudio.weather([],rainCamera,true);finishRain([{duration:2}]);await Promise.resolve();assert.equal(rainStarts.length,2,'Changing maps cancels pending rain voices');assert.equal((rainAudio as any).rainVoices.size,0,'Ended/stopped voices release their audio nodes');
+let lateRain!:(buffers:any[])=>void;(rainAudio as any).buffers.set('rain',new Promise(resolve=>lateRain=resolve));rainAudio.weather([rainHits[1].sound],rainCamera,true);rainContext.currentTime+=1;lateRain([{duration:2}]);await Promise.resolve();assert.equal(rainStarts.length,2,'Slow downloads never play a burst of stale rain impacts');
+rainAudio.weather([],rainCamera,false);assert.equal(rainGains[0].gain.value,0,'Menus and underwater views mute the rain bus smoothly');
+
 for(const padded of [false,true]) {
   const bits=5,perWord=Math.floor(64/bits),values=Array.from({length:4096},(_,i)=>i%17),words=Array<bigint>(padded?Math.ceil(4096/perWord):Math.ceil(4096*bits/64)).fill(0n);
   values.forEach((v,i)=>{const index=padded?Math.floor(i/perWord):Math.floor(i*bits/64),shift=padded?(i%perWord)*bits:(i*bits)%64;words[index]|=BigInt(v)<<BigInt(shift);if(!padded&&shift+bits>64)words[index+1]|=BigInt(v)>>BigInt(64-shift);words[index]=BigInt.asUintN(64,words[index]);});
@@ -351,4 +380,4 @@ for(const theme of ['vanilla','mario','festive','halloween','chinese']){
   assert.equal(glassMesh.geometry.groups.length,2);assert.equal(glassMesh.geometry.index!.count,data.index.length,'Separating cutout/blend preserves every original triangle');glassMesh.geometry.dispose();
 }
 for(const geometry of [cloudCell,wrappedCloud,adjacentCloud,clouds.color.geometry])geometry.dispose();
-console.log('Checks passed: all tutorials and Mash-ups, native clouds and glass layers, weather climates/roofs/transitions, rain/snow/storm lighting, fluids, fences, native UVs, lighting, doors, movement/input, audio, Anvil and day/night.');
+console.log('Checks passed: all tutorials and Mash-ups, native clouds and glass layers, weather climates/roofs/transitions, native rain audio/indoors, rain/snow/storm lighting, fluids, fences, native UVs, lighting, doors, movement/input, audio, Anvil and day/night.');

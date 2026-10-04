@@ -1,11 +1,15 @@
 // WeatherEffectRenderer / LegacyRandomSource from Mojang's 1.21.6 client.
 // Generate once per world column: re-randomizing on each frame would make snow flicker.
-class ColumnRandom {
+export class LegacyRandom {
   private seed:bigint;
   private spare:number|undefined;
-  constructor(seed:number){this.seed=(BigInt(seed)^0x5deece66dn)&((1n<<48n)-1n);}
+  constructor(seed:number|bigint){this.seed=(BigInt(seed)^0x5deece66dn)&((1n<<48n)-1n);}
   private next(bits:number){this.seed=(this.seed*0x5deece66dn+11n)&((1n<<48n)-1n);return Number(this.seed>>BigInt(48-bits));}
   float(){return this.next(24)/16777216;}
+  int(bound:number){
+    if((bound&-bound)===bound)return Math.floor(bound*this.next(31)/2147483648);
+    let bits:number,value:number;do{bits=this.next(31);value=bits%bound;}while(((bits-value+bound-1)|0)<0);return value;
+  }
   double(){return (this.next(26)*134217728+this.next(27))/9007199254740992;}
   gaussian():number {
     if(this.spare!==undefined){const value=this.spare;this.spare=undefined;return value;}
@@ -17,7 +21,7 @@ class ColumnRandom {
 export function precipitationColumn(x:number,z:number) {
   const X=(Math.imul(Math.imul(x,x),3121)+Math.imul(x,45238971))|0;
   const Z=(Math.imul(Math.imul(z,z),418711)+Math.imul(z,13761))|0;
-  const rain=new ColumnRandom(X^Z),snow=new ColumnRandom(X^Z);
+  const rain=new LegacyRandom(X^Z),snow=new LegacyRandom(X^Z);
   return {rainSpeed:Math.fround(3+rain.float()),rainPhase:(X+Z)&255,
     snowU:snow.double(),snowDriftU:snow.gaussian(),snowV:snow.double(),snowDriftV:snow.gaussian()};
 }

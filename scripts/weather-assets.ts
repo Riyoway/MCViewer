@@ -47,7 +47,8 @@ export async function prepareWeather(){
     assets.worlds[name]={climate:file,rain:`weather/${pack}-rain.png`,snow:`weather/${pack}-snow.png`};
     console.log(`Weather: ${name}, ${Object.keys(climate.columns).length} columns, ${climate.biomes.length} biomes`);
   }
-  for(const [key,names] of Object.entries({rain:[1,2,3,4].map(i=>`rain${i}`),rain_above:[5,6,7,8].map(i=>`rain${i}`),thunder:[1,2,3].map(i=>`thunder${i}`)})){
+  // Official 1.13 sounds.json: all eight samples outdoors, rain1..4 above a roof.
+  for(const [key,names] of Object.entries({rain:[1,2,3,4,5,6,7,8].map(i=>`rain${i}`),rain_above:[1,2,3,4].map(i=>`rain${i}`),thunder:[1,2,3].map(i=>`thunder${i}`)})){
     assets.sounds[key]=[];for(const name of names){const file=`weather/${name}.ogg`;await writeFile(`public/generated/${file}`,await downloadSound(`ambient/weather/${name}`));assets.sounds[key].push(file);}
   }
   await writeFile(`${output}/assets.json`,JSON.stringify(assets));

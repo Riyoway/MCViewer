@@ -3,6 +3,7 @@ import { assetUrl,AssetManager,lightmap } from '../core/AssetManager';
 import type { World } from '../minecraft/WorldLoader';
 import { Climate,precipitation,type WeatherAssets,type ClimateData,type Precipitation } from './Climate';
 import { precipitationColumn,precipitationOffsets } from './Precipitation';
+import { RainSounds,type RainSound } from './RainSound';
 
 export type WeatherMode='clear'|'rain'|'thunder'|'snow';
 const modes:WeatherMode[]=['clear','rain','thunder','snow'];
@@ -27,7 +28,7 @@ function precipitationMesh(assets:AssetManager){
 export class Weather {
   readonly root=new Group();readonly rain:ReturnType<typeof precipitationMesh>;readonly snow:ReturnType<typeof precipitationMesh>;
   mode:WeatherMode='clear';intensity=1;cycle=false;minutes=10;
-  rainLevel=0;thunderLevel=0;flash=0;rainVolume=0;sheltered=false;
+  rainLevel=0;thunderLevel=0;flash=0;sheltered=false;
   private elapsed=0;private cycleTime=0;private lightningTime=8;private thunderDelay=-1;private thunderEvents=0;
   private precipitationMode:WeatherMode='rain';
   private textures=new Map<string,Texture>();private climate?:Climate;private selection=0;
@@ -36,6 +37,7 @@ export class Weather {
   private bolt=new Mesh(new BufferGeometry(),new MeshBasicMaterial({color:0xf0d8ff,transparent:true,blending:AdditiveBlending,depthWrite:false,fog:false}));
   private splashes=new Points(new BufferGeometry(),new PointsMaterial({color:0xadc1d5,size:.06,transparent:true,opacity:.65,depthWrite:false}));
   private rainColumns=0;private snowColumns=0;
+  private rainSounds=new RainSounds();private soundClock=0;private soundEvents:RainSound[]=[];
   constructor(readonly assets:AssetManager,readonly data:WeatherAssets,private random= Math.random){
     this.rain=precipitationMesh(assets);this.snow=precipitationMesh(assets);
     this.root.add(this.rain,this.snow,this.bolt,this.splashes);this.bolt.visible=false;this.splashes.geometry.setAttribute('position',new Float32BufferAttribute(new Float32Array(48*3),3));this.splashes.frustumCulled=false;
@@ -47,7 +49,7 @@ export class Weather {
   }
   async select(name:string){
     this.climateRequest?.abort();this.climateRequest=new AbortController();
-    const token=++this.selection,world=this.data.worlds[name];this.columns.clear();this.climate=undefined;this.rainVolume=0;this.flash=0;this.bolt.visible=false;this.thunderDelay=-1;this.thunderEvents=0;this.lightningTime=8+this.random()*12;
+    const token=++this.selection,world=this.data.worlds[name];this.columns.clear();this.climate=undefined;this.rainSounds=new RainSounds();this.soundClock=0;this.soundEvents=[];this.flash=0;this.bolt.visible=false;this.thunderDelay=-1;this.thunderEvents=0;this.lightningTime=8+this.random()*12;
     this.rain.geometry.setDrawRange(0,0);this.snow.geometry.setDrawRange(0,0);
     if(!world)throw new Error(`天候データがありません: ${name}`);
     for(const type of ['rain','snow'] as const){this[type].material.map=this.textures.get(world[type])!;this[type].material.needsUpdate=true;}
@@ -57,6 +59,7 @@ export class Weather {
   kind(x:number,y:number,z:number):Precipitation{return this.mode==='clear'&&this.rainLevel<.001?'none':this.precipitationMode==='snow'?'snow':precipitation(this.climate?.at(x,y,z),y);}
   update(dt:number,eye:Vector3,world:World,playing:boolean){
     this.elapsed+=dt;
+    this.soundEvents=[];
     if(this.cycle&&playing&&(this.cycleTime+=dt)>=this.minutes*60){this.cycleTime=0;this.setMode(this.mode==='clear'?(this.random()<.2?'thunder':'rain'):'clear');}
     const target=this.mode==='clear'?0:this.intensity,approach=(value:number,to:number)=>value+Math.max(-dt*.2,Math.min(dt*.2,to-value));
     this.rainLevel=approach(this.rainLevel,target);this.thunderLevel=approach(this.thunderLevel,this.mode==='thunder'?this.intensity:0);
@@ -65,13 +68,11 @@ export class Weather {
     if(playing&&this.thunderDelay>=0){this.thunderDelay-=dt;if(this.thunderDelay<0)this.thunderEvents++;}
     this.rainColumns=0;this.snowColumns=0;const counts={rain:0,snow:0},cx=Math.floor(eye.x),cy=Math.floor(eye.y),cz=Math.floor(eye.z),splashes:number[]=[];
     if(this.columns.size>2048)this.columns.clear();
-    let wet=0,near=0;
     for(let dz=-10;dz<=10;dz++)for(let dx=-10;dx<=10;dx++){
       const x=cx+dx,z=cz+dz,surface=world.precipitationSurface(x,z);if(surface===null)continue;
       // Roof height also excludes precipitation in caves and through glass ceilings.
       const bottom=Math.max(surface,cy-10),top=Math.max(surface,cy+10);if(bottom>=top)continue;
       const kind=this.kind(x,cy,z);if(kind==='none')continue;
-      if(Math.abs(dx)<=3&&Math.abs(dz)<=3){near++;if(kind==='rain')wet++;}
       if(this.rainLevel<.001)continue;
       const len=Math.hypot(dx,dz);if(!len)continue; // Native center-column direction is undefined; omit its degenerate quad.
       const distance=((x+.5-eye.x)**2+(z+.5-eye.z)**2)/100,nearAlpha=kind==='rain'?1:.8,fade=Math.max(0,nearAlpha+(.5-nearAlpha)*distance);
@@ -88,7 +89,9 @@ export class Weather {
     for(const kind of ['rain','snow'] as const){const mesh=this[kind];mesh.material.opacity=this.rainLevel;mesh.geometry.setDrawRange(0,counts[kind]*6);for(const name of ['position','uv','color','lightLevel'])mesh.geometry.getAttribute(name).needsUpdate=true;mesh.visible=counts[kind]>0&&this.rainLevel>.001;}
     this.rainColumns=counts.rain;this.snowColumns=counts.snow;
     const splashPosition=this.splashes.geometry.getAttribute('position');splashes.forEach((v,i)=>splashPosition.array[i]=v);splashPosition.needsUpdate=true;this.splashes.geometry.setDrawRange(0,splashes.length/3);this.splashes.material.opacity=this.rainLevel*.65;
-    const roof=world.precipitationSurface(eye.x,eye.z);this.sheltered=roof!==null&&roof>eye.y;this.rainVolume=playing?this.rainLevel*(near?wet/near:0)*(this.sheltered?.25:1):0;
+    const roof=world.precipitationSurface(eye.x,eye.z);this.sheltered=roof!==null&&roof>eye.y;
+    if(playing){this.soundClock+=dt;while(this.soundClock>=.05-1e-9){this.soundClock=Math.max(0,this.soundClock-.05);const sound=this.rainSounds.tick(this.rainLevel,eye,(x,z)=>world.rainSoundSurface(x,z),(x,y,z)=>this.kind(x,y,z));if(sound)this.soundEvents.push(sound);}}
+    else {this.soundClock=0;this.soundEvents=[];}
   }
   strike(eye:Vector3,world:World){
     const angle=this.random()*Math.PI*2,distance=24+this.random()*40,x=Math.floor(eye.x+Math.cos(angle)*distance),z=Math.floor(eye.z+Math.sin(angle)*distance),surface=world.precipitationSurface(x,z);
@@ -98,5 +101,6 @@ export class Weather {
     this.bolt.geometry.dispose();this.bolt.geometry=new BufferGeometry();this.bolt.geometry.setAttribute('position',new Float32BufferAttribute(positions,3));this.flash=1;this.bolt.visible=true;this.thunderDelay=distance/80;
   }
   consumeThunder(){const count=this.thunderEvents;this.thunderEvents=0;return count;}
-  get stats(){return {rainColumns:this.rainColumns,snowColumns:this.snowColumns,sheltered:this.sheltered,rainVolume:this.rainVolume};}
+  consumeRainSounds(){const sounds=this.soundEvents;this.soundEvents=[];return sounds;}
+  get stats(){return {rainColumns:this.rainColumns,snowColumns:this.snowColumns,sheltered:this.sheltered};}
 }
