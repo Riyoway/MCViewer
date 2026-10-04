@@ -13,9 +13,9 @@ export class AudioManager {
     if(!this.buffers.has(key))this.buffers.set(key,Promise.all((this.sounds[key]??[]).map(async file=>{const response=await fetch(assetUrl(file));if(!response.ok)throw new Error(`効果音を読み込めません: ${key}`);return this.context!.decodeAudioData(await response.arrayBuffer());})));
     return this.buffers.get(key)!;
   }
-  effect(key:string,level=.3){
+  effect(key:string,level=.3,pitch?:number){
     if(this.context?.state!=='running'||!this.effectVolume)return;
-    void this.load(key).then(buffers=>{if(!buffers.length)return;const source=this.context!.createBufferSource(),gain=this.context!.createGain();source.buffer=buffers[Math.floor(Math.random()*buffers.length)];source.playbackRate.value=.95+Math.random()*.1;gain.gain.value=this.effectVolume*level;source.connect(gain);gain.connect(this.context!.destination);source.onended=()=>{source.disconnect();gain.disconnect();};source.start();}).catch(cause=>{this.error=String(cause);});
+    void this.load(key).then(buffers=>{if(!buffers.length)return;const source=this.context!.createBufferSource(),gain=this.context!.createGain();source.buffer=buffers[Math.floor(Math.random()*buffers.length)];source.playbackRate.value=pitch??(.95+Math.random()*.1);gain.gain.value=this.effectVolume*level;source.connect(gain);gain.connect(this.context!.destination);source.onended=()=>{source.disconnect();gain.disconnect();};source.start();}).catch(cause=>{this.error=String(cause);});
   }
   weather(sounds:readonly RainSound[],camera:Camera,audible:boolean){
     if(!audible&&this.rainAudible)this.rainGeneration++;

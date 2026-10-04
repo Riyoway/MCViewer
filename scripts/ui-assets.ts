@@ -75,12 +75,12 @@ export async function prepareUI(){
           if(tint)for(let i=0;i<pixels.length;i+=4)for(let c=0;c<3;c++)pixels[i+c]=Math.round(pixels[i+c]*tint[c]);
           images.push(await sharp(pixels,{raw:{width:32,height:32,channels:4}}).png().toBuffer());
         }
-        const icon=icons.length;icons.push(await sharp({create:{width:32,height:32,channels:4,background:'#00000000'}}).composite(images.map(input=>({input}))).png().toBuffer());items.push({id,name,icon});
+        const icon=icons.length;icons.push(await sharp({create:{width:32,height:32,channels:4,background:'#00000000'}}).composite(images.map(input=>({input}))).png().toBuffer());const pose=itemModel.display?.firstperson_righthand??{};items.push({id,name,icon,firstPerson:{rotation:pose.rotation??[0,0,0],translation:pose.translation??[0,0,0],scale:pose.scale??[1,1,1]}});
       }else if(blockNames.has(id)){
         const score=(state:string)=>(state.match(/=true/g)?.length??0)*10+(state.includes('half=upper')?100:0)+(state.includes('facing=north')?0:1);
         const candidates=manifest.blocks.map((block,index)=>({block,index})).filter(b=>b.block?.theme===theme&&b.block.name===id&&b.block.elements.length).sort((a,b)=>score(a.block.state)-score(b.block.state));
         if(candidates.length){
-          const block=candidates[0].block,item:UITheme['items'][number]={id,name,block:candidates[0].index};
+          const pose=itemModel.display?.firstperson_righthand??{},block=candidates[0].block,item:UITheme['items'][number]={id,name,block:candidates[0].index,firstPerson:{rotation:pose.rotation??[0,0,0],translation:pose.translation??[0,0,0],scale:pose.scale??[1,1,1]}};
           if(itemModel.elements?.length){
             const elements:Element[]=itemModel.elements.map((element:any)=>{
               const from=element.from.map((v:number)=>v/16) as Vec3,to=element.to.map((v:number)=>v/16) as Vec3,faces:Element['faces']={};

@@ -34,6 +34,8 @@ export class Packs {
   private jsonCache=new Map<string,any>();
   private roots: Record<string,string[]> = {};
 
+  restoreTileKeys(){for(const [id,tile] of this.tiles.entries())if(tile.key)this.tileCache.set(tile.key,id);}
+
   async init(theme: string) {
     if (this.roots[theme]) return;
     const root=`minecraft-memory-assets/resourcepacks/${theme}`;
@@ -110,7 +112,7 @@ export class Packs {
       Math.abs(region[2]-region[0])*4,Math.abs(region[3]-region[1])*4
     ].map(n=>n*Math.floor(30/n)) as [number,number]:undefined;
     const id=this.tiles.length, start=this.images.length;
-    this.tiles.push({start,frames:order.length,ticks,...(size?{size}:{})});this.tileCache.set(key,id);
+    this.tiles.push({start,frames:order.length,ticks,key,...(size?{size}:{})});this.tileCache.set(key,id);
     // Reserve the complete range before asynchronous image decoding starts.
     this.images.length+=order.length;
     const resized=new Map<number,Buffer>();
@@ -327,8 +329,15 @@ export class Packs {
     const cell=64, pixels=32, size=2**Math.ceil(Math.log2(Math.ceil(Math.sqrt(this.images.length))*cell));
     if(size>8192)throw new Error(`Atlas exceeds supported texture size: ${size}`);
     const columns=Math.floor(size/cell);
-    await sharp({create:{width:size,height:size,channels:4,background:{r:0,g:0,b:0,alpha:0}}})
-      .composite(this.images.map((input,i)=>({input,left:(i%columns)*cell,top:Math.floor(i/columns)*cell}))).png().toFile(path);
+    // Thousands of libvips composite layers repeatedly touch the full 8192² image.
+    // Copy decoded cells into one canvas instead; pixel data and gutters stay exact.
+    const canvas=Buffer.alloc(size*size*4);let next=0;
+    await Promise.all(Array.from({length:8},async()=>{while(next<this.images.length){
+      const i=next++,pixels=await sharp(this.images[i]).ensureAlpha().raw().toBuffer();
+      if(pixels.length!==cell*cell*4)throw new Error(`Invalid atlas cell: ${i}`);
+      for(let y=0;y<cell;y++)pixels.copy(canvas,((Math.floor(i/columns)*cell+y)*size+i%columns*cell)*4,y*cell*4,(y+1)*cell*4);
+    }}));
+    await sharp(canvas,{raw:{width:size,height:size,channels:4}}).png().toFile(path);
     return {size,cell,pixels,tiles:this.tiles};
   }
 }

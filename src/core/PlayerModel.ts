@@ -50,6 +50,7 @@ export class PlayerModel {
     return model;
   }
   swing(){if(this.swingTime>=.15)this.swingTime=0;}
+  get swingProgress(){return this.swingTime/.3;}
   update(dt:number,yaw:number,pitch:number,forward:number,strafe:number,speed:number,reducedMotion:boolean) {
     this.swingTime=Math.min(.3,this.swingTime+dt);
     const attack=this.swingTime/.3,arc=attack<1?Math.sin(Math.sqrt(attack)*Math.PI):0,twist=attack<1?Math.sin(attack*attack*Math.PI):0;

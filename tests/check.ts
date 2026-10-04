@@ -58,7 +58,7 @@ assert.equal(manifest.missingTextures.length,0);
 const tutorials=JSON.parse(await readFile('minecraft-memory-assets/worlds/templates/tutorial/world_templates.json','utf8')) as {templateLocation:string;downloadURI:string}[];
 assert.equal(Object.keys(manifest.worlds).length,tutorials.length+4,'Every supplied tutorial and all four Mash-ups must be playable');
 for(const entry of tutorials){const name=entry.templateLocation.split('/').pop()!.replace('.zip',''),id=name==='tutorial14'?'tutorial':name,world=manifest.worlds[id];assert(world,`Missing ${name}`);assert.equal(world.source,entry.downloadURI);assert.equal(world.checksum.replace(/^0+/,''),new URL(entry.downloadURI).searchParams.get('checksum'));assert.equal(createHash('md5').update(await readFile(`minecraft-memory-assets/worlds/archives/${id}.zip`)).digest('hex'),world.checksum,'Original tutorial ZIP is included and verified');assert.equal(manifest.audio[id],'vanilla.ogg');await sharp(`public/generated/${id}-icon.png`).metadata();}
-assert.equal(Object.keys(manifest.effects).length,10,'Footsteps, swimming and door sounds must ship with the maps');
+for(const key of ['wood','stone','grass','gravel','snow','sand','cloth','swim','door_open','door_close','dig_wood','dig_stone','dig_grass','dig_gravel','dig_snow','dig_sand','dig_cloth','dig_glass'])assert(manifest.effects[key]?.length,`Native effect missing: ${key}`);
 for(const block of manifest.blocks) {
   if(block?.fluid){assert.equal(block.cube,false,'Generated liquids use the surface mesher');assert(Number.isInteger(block.fluidLevel)&&block.fluidLevel!>=0&&block.fluidLevel!<=15);assert(block.fluidTiles&&block.fluidTiles.length>=2,'Generated liquids include both Still and Flow');for(const tile of block.fluidTiles)assert(manifest.atlas.tiles[tile]);}
   if(block?.name.endsWith('_fence'))assert.equal(Math.max(...block.collision.map(b=>b.to[1])),1.5,'Generated fences retain native collision height');
@@ -231,7 +231,9 @@ interactive.voxels.set(0,0,0,doorId);interactive.voxels.set(0,1,0,upperId);
 const middle=door.collision[0].from.map((n,i)=>(n+door.collision[0].to[i])/2) as [number,number,number];
 assert(interactive.collision.point(...middle));assert.equal(interactive.interact([.5,1.5,2],[0,0,-1]),'door_open');
 assert.equal(interactive.collision.point(...middle),false);assert(packs.blocks[interactive.voxels.get(0,0,0)].state.includes('open=true'));assert(packs.blocks[interactive.voxels.get(0,1,0)].state.includes('open=true'));
-assert.equal(interactive.interact([.5,1.5,2],[0,0,-1]),'door_close');assert(interactive.collision.point(...middle));
+assert.equal(interactive.interact([.5,1.5,2],[0,0,-1]),null,'An opened door does not respond to a ray through its empty doorway');
+const opened=packs.blocks[interactive.voxels.get(0,1,0)].collision[0],openCenter=opened.from.map((n,i)=>(n+opened.to[i])/2) as [number,number,number];
+assert.equal(interactive.interact([openCenter[0],1+openCenter[1],2],[0,0,-1]),'door_close');assert(interactive.collision.point(...middle));
 const trapdoor=await packs.block('vanilla',{Name:'minecraft:oak_trapdoor',Properties:{open:'true'}});assert(packs.lookup[`vanilla:${packs.blocks[trapdoor].state.replace('open=true','open=false')}`],'Initially open trapdoors can also close');
 interactive.voxels.set(3,0,0,trapdoor);assert.equal(interactive.interact([3.5,.5,2],[0,0,-1]),'door_close');
 for(const [facing,direction] of Object.entries({north:[0,0,-1],east:[1,0,0],south:[0,0,1],west:[-1,0,0]}))for(const part of ['head','foot']){

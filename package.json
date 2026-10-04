@@ -10,8 +10,9 @@
     "assets": "tsx scripts/prepare.ts",
     "weather-assets": "tsx scripts/weather-assets.ts",
     "ui-assets": "tsx scripts/ui-assets.ts",
+    "building-assets": "tsx scripts/building-assets.ts",
     "fluid-assets": "tsx scripts/fluid-assets.ts",
-    "test": "tsx tests/check.ts"
+    "test": "tsx tests/check.ts && tsx tests/building.ts"
   },
   "dependencies": {
     "three": "^0.180.0"

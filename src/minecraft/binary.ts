@@ -2,6 +2,14 @@ import type { MeshData } from './types';
 const attributes = ['position','normal','uv','tile','color','glow','light'] as const;
 export const sizes = [3,3,2,1,3,1,2];
 export interface PackedMesh { attributes: Float32Array[]; indices: Uint32Array }
+export function selectTriangles(data:PackedMesh,keep:(tile:number)=>boolean):PackedMesh {
+  const remap=new Map<number,number>(),indices:number[]=[],values=sizes.map(()=>[] as number[]);
+  for(let i=0;i<data.indices.length;i+=3)if(keep(data.attributes[3][data.indices[i]]))for(const old of data.indices.subarray(i,i+3)){
+    if(!remap.has(old)){const index=remap.size;remap.set(old,index);for(const [a,size] of sizes.entries())for(let n=0;n<size;n++)values[a].push(data.attributes[a][old*size+n]);}
+    indices.push(remap.get(old)!);
+  }
+  return {attributes:values.map(a=>new Float32Array(a)),indices:new Uint32Array(indices)};
+}
 export function encodeMeshes(data: { opaque: MeshData; transparent: MeshData }): ArrayBuffer {
   const meshes=[data.opaque,data.transparent];
   const counts=meshes.flatMap(m=>[m.position.length/3,m.index.length]);

@@ -10,6 +10,11 @@ import { Sky } from './world/Sky';
 import { Weather,type WeatherMode } from './world/Weather';
 import { fluidHeight } from './minecraft/Fluid';
 import { Hud } from './ui/Hud';
+import {CreativeControls} from './core/CreativeControls';
+import {HeldItem} from './core/HeldItem';
+import {BlockOutline} from './world/BlockOutline';
+import {BlockParticles} from './world/BlockParticles';
+import {soundGroup} from './minecraft/BlockState';
 
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const canvas=$<HTMLCanvasElement>('world'),enter=$<HTMLButtonElement>('enter'),loading=$('loading'),error=$('error');
@@ -27,6 +32,7 @@ async function init() {
   const fog=new Fog('#bbd0dd',35,96);scene.fog=fog;scene.background=new Color('#89b7ef');scene.add(camera);
   const assets=await AssetManager.load(),sky=new Sky(assets),model=await PlayerModel.create(assets),weather=await Weather.create(assets),audio=new AudioManager(assets.manifest.audio,{...assets.manifest.effects,...weather.data.sounds});
   const hud=await Hud.create(assets);
+  const held=new HeldItem(assets),outline=new BlockOutline(),debris=new BlockParticles(assets);camera.add(held.root);scene.add(outline.mesh,debris.root);
   for(const [name,data] of Object.entries(assets.manifest.worlds)){
     const button=document.createElement('button'),image=document.createElement('img'),label=document.createElement('span');
     button.className=`map${name===selected?' selected':''}`;button.dataset.world=name;button.setAttribute('aria-pressed',String(name===selected));
@@ -64,7 +70,7 @@ async function init() {
   async function choose(name:string) {
     const token=++request;selected=name;entered=false;hud.hide();hud.selectWorld(name);enter.disabled=true;error.hidden=true;loading.textContent='ワールドを読み込み中…';
     document.querySelectorAll<HTMLButtonElement>('[data-world]').forEach(button=>{const active=button.dataset.world===name;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));});
-    worldReady=false;player?.stop();audio.weather([],camera,false);if(world){scene.remove(world.root);world.dispose();}world=new World(assets,name);world.radius=config.view;scene.add(world.root);sky.select(name);
+    worldReady=false;player?.stop();controls.reset();debris.clear();audio.weather([],camera,false);if(world){scene.remove(world.root);world.dispose();}world=new World(assets,name);world.radius=config.view;scene.add(world.root);sky.select(name);
     const current=world;
     try {
       await Promise.all([current.start((done,total)=>{if(token===request)loading.textContent=`ワールドを読み込み中… ${Math.round(done/total*100)}%`;}),weather.select(name)]);
@@ -81,8 +87,19 @@ async function init() {
   $('respawn').addEventListener('click',()=>{spawn();play();});
   $('change-map').addEventListener('click',()=>{entered=false;menu('map-menu');document.exitPointerLock();enter.focus();});
   window.addEventListener('wheel',event=>{if(player?.locked){event.preventDefault();hud.select(hud.inventory.selected+Math.sign(event.deltaY));}},{passive:false});
-  const interact=()=>{if(!player?.locked||!world)return;const sound=world.interact(player.eye.toArray(),player.look.toArray());if(sound){model.swing();audio.effect(sound,.9);}};
-  canvas.addEventListener('pointerdown',event=>{if(event.button===2){event.preventDefault();interact();}else if(event.button===0&&player?.locked)model.swing();});
+  const controls=new CreativeControls(()=>{
+    if(!player?.locked||!world||!worldReady)return;model.swing();const hit=world.target(player.eye.toArray(),player.look.toArray());
+    if(!hit||hud.selectedItem?.id.endsWith('_sword'))return;const block=assets.manifest.blocks[hit.id],light=world.light(...hit.position);
+    if(world.destroy(hit)){debris.break(hit,light);audio.effect(`dig_${soundGroup(block.name)}`,1,.8);}
+  },()=>{
+    if(!player?.locked||!world||!worldReady)return;
+    const sneaking=player.keys.has('ShiftLeft')||player.keys.has('ShiftRight'),hit=world.target(player.eye.toArray(),player.look.toArray());if(!hit)return;
+    if(!sneaking){const sound=world.interact(player.eye.toArray(),player.look.toArray());if(sound){model.swing();audio.effect(sound,.9);return;}}
+    const item=hud.selectedItem;if(item&&world.place(item.id,hit,player.look.toArray(),player.position)){model.swing();const base=assets.manifest.blocks[assets.manifest.building?.[world.building.theme]?.[item.id]??0];const group=soundGroup(base?.name??'stone');audio.effect(group==='glass'?'stone':group,1,.8);}
+  },()=>{if(player?.locked&&world){const hit=world.target(player.eye.toArray(),player.look.toArray());if(hit)hud.pick(assets.manifest.blocks[hit.id].name);}});
+  canvas.addEventListener('pointerdown',event=>{if(player?.locked){event.preventDefault();controls.down(event.button);}});
+  window.addEventListener('pointerup',event=>controls.up(event.button));
+  document.addEventListener('pointerlockchange',()=>controls.reset());window.addEventListener('blur',()=>controls.reset());window.addEventListener('pagehide',()=>world?.edits.flush());
   canvas.addEventListener('contextmenu',event=>event.preventDefault());
   window.addEventListener('keydown',event=>{
     if(hud.open){if(hud.key(event)==='close'&&!event.repeat){event.preventDefault();hud.hide();play();}return;}
@@ -94,7 +111,8 @@ async function init() {
   renderer.setAnimationLoop(time=>{
     const dt=Math.min((time-last)/1000,.1);last=time;if(document.hidden)return;
     elapsed+=dt;assets.time.value=elapsed;
-    if(player&&world&&worldReady){if(player.locked)player.update(dt);world.update(player.position,player.locked?world.radius:1);if(player.position[1]<-20)spawn();if(world.error&&error.hidden){if(player.locked)document.exitPointerLock();report(world.error);}}
+    if(player&&world&&worldReady){if(player.locked){player.update(dt);controls.update(dt);}world.update(player.position,player.locked?world.radius:1);if(player.position[1]<-20)spawn();if(world.error&&error.hidden){if(player.locked)document.exitPointerLock();report(world.error);}}
+    if(player&&world){held.select(hud.selectedItem,hud.worldTheme);held.update(dt,model,player.locked&&player.perspective===0);outline.update(worldReady&&player.locked?world.target(player.eye.toArray(),player.look.toArray()):null,assets.manifest.blocks,player.locked);debris.update(dt,camera,world,player.locked);}
     if(player&&world&&worldReady){
       const p=player.position,m=player.movement,distance=stepPosition?Math.hypot(p[0]-stepPosition[0],p[2]-stepPosition[2]):0;
       if(distance>2)stepDistance=0;else stepDistance+=distance;
@@ -120,6 +138,6 @@ async function init() {
     if(debug&&player&&world)$('debug').textContent=`${fps} FPS\nXYZ ${player.position.map(n=>n.toFixed(1)).join(' / ')}\n${world.data.name}\n${player.movement.flying?'Flying':player.movement.swimming?'Swimming':'Walking'}`;
   });
   await choose(selected);
-  if(new URLSearchParams(location.search).has('debug'))Object.defineProperty(window,'memorySpace',{configurable:true,get:()=>({player,world,renderer,scene,camera,assets,sky,audio,weather,hud,config})});
+  if(new URLSearchParams(location.search).has('debug'))Object.defineProperty(window,'memorySpace',{configurable:true,get:()=>({player,world,renderer,scene,camera,assets,sky,audio,weather,hud,config,controls,held,outline,debris})});
 }
 void init().catch(report);

@@ -11,6 +11,7 @@ import { Packs } from './pack.ts';
 import { rebuildLighting } from './lighting.ts';
 import { prepareWeather } from './weather-assets.ts';
 import { prepareUI } from './ui-assets.ts';
+import { prepareBuilding } from './building-assets.ts';
 import { Voxels, encodeColumn, decodeColumn } from '../src/minecraft/Voxels.ts';
 import { meshChunk, emptyMesh, appendElement } from '../src/minecraft/Mesher.ts';
 import { encodeMeshes } from '../src/minecraft/binary.ts';
@@ -22,7 +23,7 @@ const materialsOnly=process.argv.includes('--materials'),append=process.argv.inc
 if(materialsOnly&&append)throw new Error('Use --append or --materials separately');
 const previous=materialsOnly||append?JSON.parse(await readFile('public/generated/manifest.json','utf8')) as Manifest:undefined;
 if(append&&previous){
-  packs.blocks=previous.blocks;packs.lookup=previous.lookup;packs.tiles=previous.atlas.tiles;Object.assign(worlds,previous.worlds);
+  packs.blocks=previous.blocks;packs.lookup=previous.lookup;packs.tiles=previous.atlas.tiles;packs.restoreTileKeys();Object.assign(worlds,previous.worlds);
   const {size,cell}=previous.atlas,raw=await sharp('public/generated/atlas.png').ensureAlpha().raw().toBuffer();
   const count=Math.max(...packs.tiles.map(t=>t.start+t.frames)),columns=size/cell;
   for(let i=0;i<count;i++){
@@ -148,4 +149,5 @@ const manifest:Manifest={atlas,blocks:packs.blocks,lookup:packs.lookup,audio,eff
 await writeFile(`${output}/manifest.json`,JSON.stringify(manifest));
 await prepareWeather();
 await prepareUI();
+await prepareBuilding();
 console.log(`Atlas: ${atlas.size}²; ${packs.tiles.length} textures; missing ${packs.missing.size}; unsupported ${packs.unsupported.size}`);

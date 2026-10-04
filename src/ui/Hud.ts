@@ -54,6 +54,14 @@ export class Hud {
   }
   setLegacy(legacy:boolean){this.legacy=legacy;if(this.theme){this.selection.style.backgroundImage=`url("${assetUrl(legacy?this.theme.legacySelection:this.theme.selection)}")`;const [width,height]=legacy?this.theme.legacySelectionSize:this.theme.selectionSize;this.selection.style.width=`${width}px`;this.selection.style.height=`${height}px`;}}
   select(slot:number){this.inventory.select(slot);this.drawHotbar();}
+  get selectedItem(){return this.item(this.inventory.hotbar[this.inventory.selected]);}
+  get worldTheme(){return this.theme;}
+  pick(name:string){
+    const aliases:Record<string,string>={short_grass:'grass',dirt_path:'grass_path',oak_sign:'sign',wall_torch:'torch',redstone_wall_torch:'redstone_torch',soul_wall_torch:'soul_torch'};
+    const id=aliases[name]??name;if(!this.item(id))return false;
+    const existing=this.inventory.hotbar.indexOf(id),empty=this.inventory.hotbar.indexOf(null);
+    if(existing>=0)this.select(existing);else {if(empty>=0)this.select(empty);this.inventory.assign(id);this.save();this.drawHotbar();}return true;
+  }
   show(){this.open=true;this.overlay.hidden=false;document.body.classList.add('inventory-open');this.search.focus();this.drawCatalog();}
   hide(){this.open=false;this.overlay.hidden=true;document.body.classList.remove('inventory-open');this.inventory.cursor=null;this.drawCursor();this.tooltip.hidden=true;}
   key(event:KeyboardEvent){
