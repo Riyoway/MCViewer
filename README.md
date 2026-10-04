@@ -80,7 +80,15 @@ npm run preview
 
 液体素材だけの再生成には`npm run fluid-assets`を使います。Still・Flow・Overlayを元の画像から読み直し、地形内のテクスチャIDを保ってアトラスを配置し直します。画像を非同期に読み込む前に各アニメーションの領域全体を予約し、別の画像やアニメーションが重ならないようにしています。再生速度と往復するフレーム順は各パックの`.mcmeta`を維持します。全パックの全液体フレームを元画像と照合し、GPUでもフレームの表示時間を検証しています。[公式のアニメーション設定解説](https://learn.microsoft.com/en-us/minecraft/creator/documents/createanimatedblocktexture?view=minecraft-bedrock-stable)
 
-Minecraftの面ごとの明暗（上1、下0.5、東西0.6、南北0.8）と頂点AOを使用します。天空光・ブロック光はそれぞれ0〜15で、窓や洞窟の入口から1段階ずつ伝播します。葉や水による減衰も反映します。テクスチャ・Tint・光をMinecraftと同じ表示色の空間で乗算し、白っぽくなる色空間の混同を避けています。Gammaは明るさのカーブを変更し、夜の暗さや屋内の明るさを調整できます。昼夜サイクルは標準20分。時刻、停止・再開、1日の長さを変更できます。太陽・月・雲は提供されたDefault素材、音楽は各Packの実OGGです。
+Minecraftの面ごとの明暗（上1、下0.5、東西0.6、南北0.8）と頂点AOを使用します。天空光・ブロック光はそれぞれ0〜15で、窓や洞窟の入口から1段階ずつ伝播します。葉や水による減衰も反映します。テクスチャ・Tint・光をMinecraftと同じ表示色の空間で乗算し、白っぽくなる色空間の混同を避けています。昼夜サイクルは標準20分。時刻、停止・再開、1日の長さを変更できます。太陽・月・雲は提供されたDefault素材、音楽は各Packの実OGGです。
+
+### Gamma
+
+Legacy Console表示では、Gammaは整数の0〜100%、初期値50%です。Console版の設定処理はこの値を描画ライブラリの画面出力用Gammaへ渡し、ライトマップ内のJavaの明るさは0に固定します。[Console版の設定処理](https://git.minecraftlegacy.com/MinecraftConsole/src/src/commit/b5111232aa13952f58ed1b3b3525ea825662b95c/Minecraft.Client/Common/Consoles_App.cpp)、[Console版のライトマップ](https://git.minecraftlegacy.com/MinecraftConsole/src/src/commit/b5111232aa13952f58ed1b3b3525ea825662b95c/Minecraft.Client/GameRenderer.cpp)
+
+ブラウザでは、Consoleの解析結果に合わせて修正されたLegacy4Jのカーブを参照し、`g = 0.5 + 1.5 × (設定値 / 100)`、`出力RGB = 入力RGB^(1/g)`を使います。0% / 50% / 100%のGammaは0.5 / 1.25 / 2.0です。sRGBの表示値で、空・霧・液体・手・HUD・メニューを合成した後に補正します。半透明の面やUIを先に個別補正してから混ぜることはありません。黒と白を保ち、中間色と暗部が変化します。[解析結果に合わせたカーブの修正](https://github.com/Wilyicaro/Legacy-Minecraft/commit/e434f3128e7f11c1e42ecee7492bcb786fbef4dc)、[Legacy4Jの画面補正](https://github.com/Wilyicaro/Legacy-Minecraft/blob/524efc8cef485025f98c065c35c81763b565c026/src/main/resources/assets/legacy/shaders/core/gamma.fsh)
+
+Java表示では従来のライトマップの「明るさ」を使います。設定値はブラウザに保存し、表示方式の切り替え時に二重の補正をかけません。開発サーバーの`/tests/gamma-check.html`でWebGLの色、HTMLのHUD、半透明の合成を確認できます。512×256でJava表示と0/25/50/75/100%を`probe-java.png`、`probe-0.png`などとして保存し、`npx tsx tests/gamma-readback.ts <保存先>`で表示後の画素を参照カーブと照合できます。描画ライブラリを各実機で動かした比較は行っていません。
 
 葉などの穴のある素材は背後の面を残し、木目などのモデル回転もUVに反映します。回転した面を結合しても、1ブロックごとのテクスチャ密度を維持します。
 

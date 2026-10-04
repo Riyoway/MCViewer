@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<title>Console Gamma compositor check</title>
+<link rel="icon" href="data:,">
+<style>body{margin:0;width:100%;height:100vh;background:#000}#surface{position:fixed;inset:0}#hud{position:fixed;left:0;top:64px;display:flex}#hud>div{width:64px;height:64px}#overlay{position:fixed;left:384px;top:0;width:64px;height:64px;background:rgb(192 64 32 / 50%)}#result{position:fixed;top:144px;left:8px;color:white;font:14px monospace}</style>
+<canvas id="surface" width="512" height="64"></canvas>
+<div id="hud"><div style="background:rgb(0 0 0)"></div><div style="background:rgb(32 32 32)"></div><div style="background:rgb(64 64 64)"></div><div style="background:rgb(128 128 128)"></div><div style="background:rgb(192 192 192)"></div><div style="background:rgb(255 255 255)"></div><div style="background:rgb(64 128 192)"></div></div>
+<div id="overlay"></div><pre id="result">Preparing…</pre>
+<script type="module">
+import {WebGLRenderer,Scene,Color,OrthographicCamera,Mesh,PlaneGeometry,MeshBasicMaterial} from 'three';
+import {ConsoleGamma} from '/src/core/ConsoleGamma.ts';
+const screen=new ConsoleGamma(document.body),canvas=document.querySelector('canvas'),renderer=new WebGLRenderer({canvas,antialias:false});
+renderer.setSize(512,64,false);canvas.style.width='512px';canvas.style.height='64px';
+const scene=new Scene(),camera=new OrthographicCamera(0,512,64,0,.1,10);camera.position.z=1;
+const colors=[[0,0,0],[32,32,32],[64,64,64],[128,128,128],[192,192,192],[255,255,255],[64,128,192],[255,0,0]];
+for(const [i,rgb] of colors.entries()){const color=new Color().setRGB(...rgb.map(n=>n/255),'srgb'),patch=new Mesh(new PlaneGeometry(64,64),new MeshBasicMaterial({color}));patch.position.set(i*64+32,32,0);scene.add(patch);}
+renderer.render(scene,camera);
+window.gammaCheck={set(value,legacy=true){screen.set(value,legacy);document.querySelector('#result').textContent=`Gamma: ${value}% (${legacy?'Legacy Console':'Java'})`;},colors};
+window.gammaCheck.set(50);
+</script>
+</html>

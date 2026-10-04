@@ -7,6 +7,7 @@ import {nativeOptions} from './ui/NativeOptions';
 import {WorldStore,type SavedWorld,type LocalFile} from './viewer/WorldStore';
 import {ImportedWorld,type ImportResult} from './viewer/ImportWorld';
 import {ResourcePack} from './viewer/ResourcePack';
+import {ConsoleGamma} from './core/ConsoleGamma';
 import { Scene, PerspectiveCamera, Fog, Color, NearestFilter, NearestMipmapLinearFilter } from 'three';
 import { createRenderer } from './core/Renderer';
 import { AssetManager, assetUrl } from './core/AssetManager';
@@ -41,7 +42,7 @@ let world:World|null=null,player:Player|null=null,selected='',entered=false,requ
 function menu(id:string){ui=id;document.querySelectorAll<HTMLElement>('[data-screen]').forEach(panel=>panel.hidden=panel.id!==id);const panorama=!entered&&['home-menu','settings-menu','video-menu','sound-menu','controls-menu','world-settings-menu','help-menu'].includes(id);document.body.classList.toggle('panorama-menu',panorama);document.body.classList.toggle('dirt-menu',!panorama&&(!entered||['map-menu','add-menu','loading-menu','pack-menu','delete-menu'].includes(id)));document.body.classList.toggle('pause-background',entered&&!document.body.classList.contains('dirt-menu'));}
 function report(cause:unknown){error.hidden=false;error.textContent=cause instanceof Error?cause.message:cause instanceof Event?'画像を読み込めません。ページを再読み込みしてください。':String(cause);}
 async function init() {
-  const renderer=createRenderer(canvas),scene=new Scene(),camera=new PerspectiveCamera(70,innerWidth/innerHeight,.05,350);
+  const renderer=createRenderer(canvas),consoleGamma=new ConsoleGamma(document.body),scene=new Scene(),camera=new PerspectiveCamera(70,innerWidth/innerHeight,.05,350);
   const fog=new Fog('#bbd0dd',35,96);scene.fog=fog;scene.background=new Color('#89b7ef');scene.add(camera);
   const assets=await AssetManager.load(),sky=new Sky(assets),model=await PlayerModel.create(assets),weather=await Weather.create(assets),audio=new AudioManager(assets.manifest.audio,{...assets.manifest.effects,...weather.data.sounds});
   const hud=await Hud.create(assets);
@@ -88,7 +89,8 @@ async function init() {
       if(field instanceof HTMLInputElement&&field.type==='range')Object.assign(config,{[key]:Number(field.value)});
       const output=document.getElementById(`${key}-value`);if(output)output.textContent=`${config[key as keyof typeof config]}${['gamma','sensitivity','volume','effects','weatherIntensity'].includes(key)?'%':['minutes','weatherMinutes'].includes(key)?'分':key==='view'?' chunks':''}`;
     }
-    assets.gamma.value=config.gamma/100;const filter=config.mipmap?NearestMipmapLinearFilter:NearestFilter;if(assets.opaque.map!.minFilter!==filter){assets.opaque.map!.minFilter=filter;assets.opaque.map!.needsUpdate=true;}
+    assets.gamma.value=config.legacy?0:config.gamma/100;consoleGamma.set(config.gamma,config.legacy);const gammaLabel=config.legacy?'Gamma':'明るさ';if($('gamma-label').textContent!==gammaLabel)$('gamma-label').textContent=gammaLabel;
+    const filter=config.mipmap?NearestMipmapLinearFilter:NearestFilter;if(assets.opaque.map!.minFilter!==filter){assets.opaque.map!.minFilter=filter;assets.opaque.map!.needsUpdate=true;}
     sky.cycle=config.cycle;sky.minutes=config.minutes;sky.clouds=config.clouds;
     hud.setLegacy(config.legacy);
     weather.setMode(config.weather);weather.intensity=config.weatherIntensity/100;weather.cycle=config.weatherCycle;weather.minutes=config.weatherMinutes;

@@ -6,7 +6,7 @@ import type { PackedMesh } from '../minecraft/binary';
 const external=import.meta.env?.VITE_ASSET_BASE_URL,base=(external||`${import.meta.env?.BASE_URL??'/'}generated`).replace(/\/$/,'');
 const version=typeof __ASSET_VERSION__==='undefined'?'local':__ASSET_VERSION__;
 export const assetUrl=(file:string)=>/^(blob:|data:|https?:)/.test(file)?file:`${base}/${!external&&import.meta.env?.PROD?`${version}/`:''}${file}`;
-// Mojang's lightmap.fsh: independent sky/block light, warm block-light curve and Gamma.
+// Java lightmap brightness. Console Gamma is applied to the composed display instead.
 export const lightmap=`uniform float daylight;uniform float gamma;
 vec3 minecraftLight(vec2 level,float glow) {
   vec2 brightness=level/max(vec2(.01),4.0-3.0*level);
@@ -20,7 +20,7 @@ vec3 minecraftLight(vec2 level,float glow) {
 }`;
 export class AssetManager {
   readonly time={value:0};
-  readonly daylight={value:1};readonly gamma={value:.5};
+  readonly daylight={value:1};readonly gamma={value:0};
   readonly entityLight={value:new Vector2(1,0)};
   readonly opaque:MeshBasicMaterial;
   readonly transparent:MeshBasicMaterial;
