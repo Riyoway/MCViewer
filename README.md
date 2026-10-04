@@ -1,6 +1,16 @@
-# Minecraft Worlds
+# Minecraft World Viewer
 
-Three.js + TypeScript + Viteのワールド探索ビューア。Tutorial TU1 / TU3 / TU5 / TU7 / TU9 / TU12 / TU14 / TU19 / TU31 / TU46と、Super Mario / Festive / Halloween / Chinese Mythologyの実ワールドに直接入ります。
+Three.js + TypeScript + Viteで、Java版の保存済みワールドをブラウザで探索するビューア。Tutorial TU1 / TU3 / TU5 / TU7 / TU9 / TU12 / TU14 / TU19 / TU31 / TU46と、Super Mario / Festive / Halloween / Chinese Mythologyは14個のサンプルワールドとして収録しています。
+
+ホームの「ワールドを選択」→「ワールドを追加」で、`level.dat`と`region/*.mca`を含むZIPまたはワールドのフォルダーを選びます。同じ画面でJava形式のResource Pack ZIPを指定できます。追加したファイルはIndexedDBへ保存し、サーバーには送信しません。再読み込み後にも一覧に残り、ワールドごとのパック変更・解除・削除と、ブロック編集のリセットが可能です。「サンプルワールド」は追加したワールドとは別の一覧です。
+
+ホームのパノラマ、ロゴ、ボタン、Unicode/ASCIIフォント、クリック音、メニューBGMは、ユーザーが指定した`Minecraft-1.12.2-js.html`のEPKから抽出しています。元クライアントのJavaScriptは実行・配布しません。1.12.2のGUI寸法と整数倍率、土の背景の減光、ネイティブのスライダー・値を切り替える設定ボタンを使い、Escと設定はWorld Viewer用の操作につなげています。ホームではサンプルのチャンクを先読みしません。
+
+ワールドはWorkerでNBT・リージョンを解析し、周囲のチャンクだけをメッシュ化します。1.12以前のID/Dataと、1.13以降のPalette、1.18以降の負の高さ、保存された光・バイオームに対応します。Resource Packは新旧のblock/blocksテクスチャ名、Entity画像の面領域、アニメーションのフレーム順と時間、標準ブロックモデルの親・Variant・Multipart・部品の回転、太陽・月・雲を反映します。パックの解除や別ワールドへの移動では元の素材を復元します。
+
+対応範囲はJava AnvilのOverworldです。Bedrockの`.mcworld`/LevelDB、外部`.mcc`チャンク、Zstd圧縮、Mob・Block Entityの個別データ、OptiFine/シェーダー固有機能は対象外です。追加ワールドの絵画Entityは未対応です。用意されたパレットにないブロックは石、ない状態は最も近い状態で表示し、読み込み結果の`unsupported`に記録します。高解像度のパックも読み込みますが、テクスチャは既存の32pxアトラスへ縮小し、`.mcmeta`のフレーム間補間は行いません。サンプルワールドの絵画など、これまでの再現は保持します。
+
+メニュー素材の再抽出は`npm run menu-assets -- <HTMLのパス>`。ワールド読み込み用の旧ID・バイオーム表と、アトラスの元テクスチャ名は`npm run viewer-data`で再生成します。元のブロック番号・アトラスの画素は変えません。
 
 ## 起動
 
@@ -11,7 +21,7 @@ npm ci
 npm run dev
 ```
 
-マップ選択画面で読み込みが終わったら「プレイ」を押してください。素材やメッシュを変更したときは`npm run assets`で全マップを再生成します。未生成のマップだけ追加する場合は`npm run assets -- --append`を使えます。収録した元ZIPのMD5を配布定義と照合し、元ZIPがないときは従来のキャッシュ・ダウンロードを使用してリポジトリに保存します。全マップの再生成には数十分かかります。
+ワールドを選択して読み込みが終わったら「ワールドを開く」を押してください。素材やメッシュを変更したときは`npm run assets`で全マップを再生成します。未生成のマップだけ追加する場合は`npm run assets -- --append`を使えます。収録した元ZIPのMD5を配布定義と照合し、元ZIPがないときは従来のキャッシュ・ダウンロードを使用してリポジトリに保存します。全マップの再生成には数十分かかります。
 
 UIと雨の粒子画像だけの再生成は`npm run ui-assets`で行えます。1.13の実GUI・アイテムモデル・粒子アトラスと、各Mash-upの対応画像を使用します。新規ファイルを追加した場合はViteの開発サーバーも再起動してください。日本語アイテム名は公式Asset IndexのSHA-1と照合します。
 
@@ -118,4 +128,4 @@ Escのゲームメニューから「マップをリセット」を選ぶと、�
 
 VercelのDeployment Storageは、保持しているデプロイのビルド出力・静的素材の保存容量です。Hobbyのチーム枠は10GBで、直近3件のProductionなどは自動削除の対象から外れます。素材を外部に分けると新しいデプロイは小さくなりますが、既存のデプロイの容量は残ります。ブラウザキャッシュや先読みの削減は通信量の対策であり、保存容量は減らしません。[Deployment Storage](https://vercel.com/docs/deployment-storage)・[Hobbyの保持ルール](https://vercel.com/changelog/hobby-projects-now-retain-fewer-deployments-to-free-up-storage)
 
-ワールド素材をCloudflare R2などへ分ける場合は、通常ビルドで生成した`dist/generated/`の中身を公開ストレージへ配置し、CORSでアプリのOriginを許可します。Vercelの環境変数に`VITE_ASSET_BASE_URL=https://assets.example.com/generated/<バージョン>`を設定すると、素材をそのURLから直接読み込み、Vercelのビルド出力には含めません。この構成の出力は約523KBです。素材を更新して別バージョンをアップロードした際は、このURLも変更します。Vercel経由のProxyやRewriteは使用しません。ストレージ側にもバージョン付きURLの長期Cache-Controlを設定してください。R2はStandardの無料枠に10GBの保存容量・月1,000万回の読み込みが含まれ、インターネットへの転送は無料ですが、操作・保存容量の超過は別途課金されます。[R2料金](https://developers.cloudflare.com/r2/pricing/)
+ワールド素材をCloudflare R2などへ分ける場合は、通常ビルドで生成した`dist/generated/`の中身を公開ストレージへ配置し、CORSでアプリのOriginを許可します。Vercelの環境変数に`VITE_ASSET_BASE_URL=https://assets.example.com/generated/<バージョン>`を設定すると、素材をそのURLから直接読み込み、Vercelのビルド出力には含めません。この構成ではアプリ本体とメニュー素材・読み込み用データだけをVercelへ出力します。素材を更新して別バージョンをアップロードした際は、このURLも変更します。Vercel経由のProxyやRewriteは使用しません。ストレージ側にもバージョン付きURLの長期Cache-Controlを設定してください。R2はStandardの無料枠に10GBの保存容量・月1,000万回の読み込みが含まれ、インターネットへの転送は無料ですが、操作・保存容量の超過は別途課金されます。[R2料金](https://developers.cloudflare.com/r2/pricing/)

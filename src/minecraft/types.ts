@@ -46,6 +46,7 @@ export interface Manifest {
 }
 export interface WorldManifest {
   name: string; source: string; checksum: string;
+  theme?:string;
   bounds: { min: Vec3; max: Vec3 };
   chunks: { file: string; voxels: string; origin: Vec3; quads: number }[];
   spawn: Vec3;

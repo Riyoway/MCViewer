@@ -1,4 +1,12 @@
 import './style.css';
+import './ui/menu.css';
+import menuMarkup from './ui/menus.html?raw';
+import {MinecraftText} from './ui/MinecraftText';
+import {Panorama} from './ui/Panorama';
+import {nativeOptions} from './ui/NativeOptions';
+import {WorldStore,type SavedWorld,type LocalFile} from './viewer/WorldStore';
+import {ImportedWorld,type ImportResult} from './viewer/ImportWorld';
+import {ResourcePack} from './viewer/ResourcePack';
 import { Scene, PerspectiveCamera, Fog, Color, NearestFilter, NearestMipmapLinearFilter } from 'three';
 import { createRenderer } from './core/Renderer';
 import { AssetManager, assetUrl } from './core/AssetManager';
@@ -17,6 +25,11 @@ import {BlockParticles} from './world/BlockParticles';
 import {soundGroup} from './minecraft/BlockState';
 
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
+$('menus').innerHTML=menuMarkup;
+$('menus').inert=true;$('menus').setAttribute('aria-busy','true');
+document.body.classList.add('panorama-menu');
+document.title='Minecraft World Viewer';
+const panoramaShade=document.createElement('div');panoramaShade.id='panorama-shade';$('world').after(panoramaShade);
 const canvas=$<HTMLCanvasElement>('world'),enter=$<HTMLButtonElement>('enter'),loading=$('loading'),error=$('error');
 // The old bob option defaulted on; the revised option starts off without resetting other settings.
 const defaults={gamma:50,legacy:true,view:6,fov:70,resolution:720,mipmap:true,viewBobbing:false,clouds:true,sensitivity:100,volume:50,effects:70,cycle:true,minutes:20,weather:'clear' as WeatherMode,weatherIntensity:100,weatherCycle:false,weatherMinutes:10};
@@ -24,23 +37,50 @@ const config={...defaults};
 try{const saved=JSON.parse(localStorage.getItem('world-settings')??'{}');for(const key of Object.keys(config) as (keyof typeof config)[])if(typeof saved[key]===typeof defaults[key])Object.assign(config,{[key]:saved[key]});}catch{/* storage may be unavailable */}
 if(![0,480,720].includes(config.resolution))config.resolution=defaults.resolution;
 if(!['clear','rain','thunder','snow'].includes(config.weather))config.weather='clear';
-let world:World|null=null,player:Player|null=null,selected='tutorial',entered=false,request=0,ui='map-menu',settingsReturn='map-menu',debug=false,worldReady=false;
-function menu(id:string){ui=id;for(const panel of ['map-menu','pause-menu','settings-menu','reset-menu'])$(panel).hidden=panel!==id;}
+let world:World|null=null,player:Player|null=null,selected='',entered=false,request=0,ui='home-menu',settingsReturn='home-menu',debug=false,worldReady=false;
+function menu(id:string){ui=id;document.querySelectorAll<HTMLElement>('[data-screen]').forEach(panel=>panel.hidden=panel.id!==id);const panorama=!entered&&['home-menu','settings-menu','video-menu','sound-menu','controls-menu','world-settings-menu','help-menu'].includes(id);document.body.classList.toggle('panorama-menu',panorama);document.body.classList.toggle('dirt-menu',!panorama&&(!entered||['map-menu','add-menu','loading-menu','pack-menu','delete-menu'].includes(id)));document.body.classList.toggle('pause-background',entered&&!document.body.classList.contains('dirt-menu'));}
 function report(cause:unknown){error.hidden=false;error.textContent=cause instanceof Error?cause.message:cause instanceof Event?'画像を読み込めません。ページを再読み込みしてください。':String(cause);}
 async function init() {
   const renderer=createRenderer(canvas),scene=new Scene(),camera=new PerspectiveCamera(70,innerWidth/innerHeight,.05,350);
   const fog=new Fog('#bbd0dd',35,96);scene.fog=fog;scene.background=new Color('#89b7ef');scene.add(camera);
   const assets=await AssetManager.load(),sky=new Sky(assets),model=await PlayerModel.create(assets),weather=await Weather.create(assets),audio=new AudioManager(assets.manifest.audio,{...assets.manifest.effects,...weather.data.sounds});
   const hud=await Hud.create(assets);
+  audio.sources.menu=new URL(`${import.meta.env.BASE_URL}menu/menu.ogg`,location.href).href;audio.sounds.ui_click=[new URL(`${import.meta.env.BASE_URL}menu/click.ogg`,location.href).href];audio.select('menu');
+  $('menus').addEventListener('click',event=>{const button=(event.target as HTMLElement).closest('button');if(button&&!button.disabled)void audio.start().then(()=>audio.effect('ui_click',.25,1)).catch(()=>{/* A later trusted click can resume audio. */});});
+  const panorama=new Panorama(),store=new WorldStore(),resourcePack=new ResourcePack(assets),samples=structuredClone(assets.manifest.worlds),records=new Map<string,SavedWorld>();
+  let listMode:'samples'|'local'='local',helpReturn='home-menu',packReturn='settings-menu',pendingImport:ImportedWorld|undefined,importFiles:LocalFile[]=[],importPack:LocalFile|undefined,materialQueue:Promise<unknown>=Promise.resolve();
+  const bitmap=new MinecraftText();void bitmap.start($('menus')).catch(()=>{/* fallback to readable browser text */});await panorama.load();
   const held=new HeldItem(assets),outline=new BlockOutline(),debris=new BlockParticles(assets);camera.add(held.root);scene.add(outline.mesh,debris.root);
-  for(const [name,data] of Object.entries(assets.manifest.worlds)){
-    const button=document.createElement('button'),image=document.createElement('img'),label=document.createElement('span');
-    button.className=`map${name===selected?' selected':''}`;button.dataset.world=name;button.setAttribute('aria-pressed',String(name===selected));
-    image.src=assetUrl(`${name}-icon.png`);image.alt='';label.textContent=data.name;button.append(image,label);$('maps').append(button);
+  const listUrls:string[]=[];
+  async function refreshList(mode=listMode){
+    listMode=mode;for(const url of listUrls)URL.revokeObjectURL(url);listUrls.length=0;
+    try{records.clear();for(const record of await store.list())records.set(record.id,record);}catch(cause){report(`ブラウザの保存領域を開けません: ${cause}`);}
+    const entries=mode==='samples'?Object.entries(samples).map(([id,data])=>({id,name:data.name,version:'サンプルワールド',pack:records.get('sample:'+id)?.pack?.name,icon:assetUrl(`${id}-icon.png`)})):[...records.values()].filter(r=>!r.sample).map(r=>{const icon=r.icon?URL.createObjectURL(r.icon):`${import.meta.env.BASE_URL}menu/dirt.png`;if(r.icon)listUrls.push(icon);return {id:r.id,name:r.name,version:r.version??'Java Edition',pack:r.pack?.name,icon};});
+    if(!entries.some(e=>e.id===selected))selected='';$('maps').replaceChildren();
+    for(const entry of entries){const button=document.createElement('button'),image=document.createElement('img'),info=document.createElement('div');button.className='world-entry';button.dataset.world=entry.id;button.setAttribute('role','option');image.src=entry.icon;image.alt='';info.className='world-info';
+      for(const [text,style] of [[entry.name,''],[entry.version,'world-details'],[entry.pack??'クリエイティブ','world-details']]){const line=document.createElement('p');line.textContent=text;line.className=style;info.append(line);}button.append(image,info);button.addEventListener('click',()=>selectEntry(entry.id));button.addEventListener('dblclick',()=>void openSelected());$('maps').append(button);}
+    if(!entries.length){const empty=document.createElement('p');empty.className='empty-worlds';empty.textContent='ワールドがありません';$('maps').append(empty);}
+    $('world-list-title').textContent=mode==='samples'?'サンプルワールド':'ワールドを選択';$('switch-worlds').textContent=mode==='samples'?'追加したワールド':'サンプル';selectEntry(selected);
   }
+  function selectEntry(id:string){selected=id;document.querySelectorAll<HTMLElement>('[data-world]').forEach(button=>{const active=button.dataset.world===id;button.classList.toggle('selected',active);button.setAttribute('aria-selected',String(active));});enter.disabled=!id;$<HTMLButtonElement>('delete-world').disabled=!id||listMode==='samples';}
+  $('home-worlds').onclick=()=>{entered=false;menu('map-menu');void refreshList('local');};$('home-samples').onclick=()=>{entered=false;menu('map-menu');void refreshList('samples');};
+  $('switch-worlds').onclick=()=>void refreshList(listMode==='samples'?'local':'samples');$('worlds-back').onclick=()=>menu('home-menu');
+  $('add-world').onclick=()=>{menu('add-menu');$<HTMLInputElement>('world-name').focus();};$('cancel-import').onclick=()=>menu('map-menu');
+  $('pick-world').onclick=()=>$('world-zip').click();$('pick-folder').onclick=()=>$('world-folder').click();$('pick-import-pack').onclick=()=>$('import-pack-file').click();
+  for(const id of ['world-zip','world-folder'])$(id).onchange=()=>{const files=[...($<HTMLInputElement>(id).files??[])];importFiles=files.map(file=>({name:file.webkitRelativePath||file.name,blob:file}));$('world-file-name').textContent=files[0]?(id==='world-folder'?files[0].webkitRelativePath.split('/')[0]:files[0].name):'選択されていません';if(files[0])$<HTMLInputElement>('world-name').value=(id==='world-folder'?files[0].webkitRelativePath.split('/')[0]:files[0].name.replace(/\.zip$/i,''));$<HTMLButtonElement>('confirm-import').disabled=!importFiles.length;};
+  $('import-pack-file').onchange=()=>{const file=$<HTMLInputElement>('import-pack-file').files?.[0];importPack=file?{name:file.name,blob:file}:undefined;$('import-pack-name').textContent=file?.name??'デフォルト';};$('clear-import-pack').onclick=()=>{importPack=undefined;$<HTMLInputElement>('import-pack-file').value='';$('import-pack-name').textContent='デフォルト';};
+  $('confirm-import').onclick=()=>void (async()=>{const record:SavedWorld={id:'local:'+crypto.randomUUID(),name:$<HTMLInputElement>('world-name').value.trim()||'新しいワールド',added:Date.now(),files:importFiles.slice(),pack:importPack};records.set(record.id,record);selected=record.id;const opened=await choose(record.id);if(!opened){records.delete(record.id);return;}record.manifest=opened.data;await store.put(record);importFiles=[];importPack=undefined;$<HTMLButtonElement>('confirm-import').disabled=true;})().catch(report);
+  $('delete-world').onclick=()=>{if(!selected||listMode==='samples')return;$('delete-map-name').textContent=records.get(selected)?.name??'';menu('delete-menu');};$('cancel-delete').onclick=()=>menu('map-menu');$('confirm-delete').onclick=()=>void (async()=>{if(selected&&!samples[selected]){await store.delete(selected);localStorage.removeItem('world-edits:'+selected);localStorage.removeItem('hotbar:'+selected);selected='';}menu('map-menu');await refreshList();})().catch(report);
+  const openPack=()=>{packReturn=ui;menu('pack-menu');const record=records.get(samples[selected]?'sample:'+selected:selected);$('active-pack-name').textContent=record?.pack?.name??(samples[selected]?`${samples[selected].name}（同梱）`:'デフォルト');$('pack-status').textContent=selected?'':'先にワールドを選択してください。';$<HTMLButtonElement>('pick-active-pack').disabled=$<HTMLButtonElement>('default-active-pack').disabled=!selected;};
+  $('settings-pack').onclick=openPack;$('pause-pack').onclick=openPack;$('pack-back').onclick=()=>menu(packReturn);$('pick-active-pack').onclick=()=>$('active-pack-file').click();
+  async function changePack(pack?:LocalFile){if(!selected)return;const id=samples[selected]?'sample:'+selected:selected,record=records.get(id)??{id,name:samples[selected].name,added:Date.now(),files:[],sample:selected};const old=record.pack;record.pack=pack;records.set(id,record);const position=player?[...player.position]:undefined,yaw=player?.yaw,pitch=player?.pitch,returnEntered=entered,opened=await choose(selected);if(!opened){record.pack=old;return;}if(position&&returnEntered&&player){player.position.splice(0,3,...position);player.yaw=yaw!;player.pitch=pitch!;player.update(0);}entered=returnEntered;await store.put(record);$('active-pack-name').textContent=pack?.name??'デフォルト';menu('pack-menu');}
+  $('active-pack-file').onchange=()=>{const file=$<HTMLInputElement>('active-pack-file').files?.[0];if(file)void changePack({name:file.name,blob:file}).catch(report);};$('default-active-pack').onclick=()=>void changePack().catch(report);
+  $('home-help').onclick=()=>{helpReturn='home-menu';menu('help-menu');};$('help-back').onclick=()=>menu(helpReturn);
+  document.querySelectorAll<HTMLButtonElement>('[data-submenu]').forEach(button=>button.onclick=()=>{if(button.dataset.submenu==='help-menu')helpReturn=ui;menu(button.dataset.submenu!);});document.querySelectorAll<HTMLButtonElement>('[data-options-back]').forEach(button=>button.onclick=()=>menu('settings-menu'));
   await sky.load();scene.add(sky.root,model.root,weather.root);model.root.visible=false;
-  const resize=()=>{const height=config.resolution?Math.min(innerHeight,config.resolution):innerHeight,width=Math.floor(height*innerWidth/innerHeight);renderer.setSize(width,height,false);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();};
+  const resize=()=>{const height=config.resolution?Math.min(innerHeight,config.resolution):innerHeight,width=Math.floor(height*innerWidth/innerHeight);renderer.setSize(width,height,false);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();document.documentElement.style.setProperty('--menu-scale',String(Math.max(1,Math.min(4,Math.floor(innerWidth/320),Math.floor(innerHeight/240)))));};
   window.addEventListener('resize',resize);
+  const refreshOptions=nativeOptions($('menus'));
   function applySettings() {
     for(const [key,value] of Object.entries(config)) {
       const field=$<HTMLInputElement|HTMLSelectElement>(key);if(!field)continue;
@@ -48,48 +88,59 @@ async function init() {
       if(field instanceof HTMLInputElement&&field.type==='range')Object.assign(config,{[key]:Number(field.value)});
       const output=document.getElementById(`${key}-value`);if(output)output.textContent=`${config[key as keyof typeof config]}${['gamma','sensitivity','volume','effects','weatherIntensity'].includes(key)?'%':['minutes','weatherMinutes'].includes(key)?'分':key==='view'?' chunks':''}`;
     }
-    assets.gamma.value=config.gamma/100;assets.opaque.map!.minFilter=config.mipmap?NearestMipmapLinearFilter:NearestFilter;assets.opaque.map!.needsUpdate=true;
+    assets.gamma.value=config.gamma/100;const filter=config.mipmap?NearestMipmapLinearFilter:NearestFilter;if(assets.opaque.map!.minFilter!==filter){assets.opaque.map!.minFilter=filter;assets.opaque.map!.needsUpdate=true;}
     sky.cycle=config.cycle;sky.minutes=config.minutes;sky.clouds=config.clouds;
     hud.setLegacy(config.legacy);
     weather.setMode(config.weather);weather.intensity=config.weatherIntensity/100;weather.cycle=config.weatherCycle;weather.minutes=config.weatherMinutes;
     audio.setVolume(config.volume/100);audio.setEffectVolume(config.effects/100);if(world)world.radius=config.view;
     if(player){player.fov=config.fov;player.motionEnabled=config.viewBobbing;player.sensitivity=config.sensitivity*.00002;}
-    resize();try{localStorage.setItem('world-settings',JSON.stringify(config));}catch{/* private mode */}
+    refreshOptions();resize();try{localStorage.setItem('world-settings',JSON.stringify(config));}catch{/* private mode */}
   }
   for(const key of Object.keys(config) as (keyof typeof config)[])$(key).addEventListener('input',event=>{
     const field=event.target as HTMLInputElement|HTMLSelectElement;
     Object.assign(config,{[key]:typeof defaults[key]==='boolean'?(field instanceof HTMLInputElement?field.checked:field.value==='true'):typeof defaults[key]==='string'?field.value:Number(field.value)});applySettings();
   });
-  const updateTime=()=>{const hours=((sky.time+6000)%24000)/1000;$('time-value').textContent=`${String(Math.floor(hours)).padStart(2,'0')}:${String(Math.floor(hours%1*60)).padStart(2,'0')}`;};
+  const updateTime=()=>{const hours=((sky.time+6000)%24000)/1000,text=`${String(Math.floor(hours)).padStart(2,'0')}:${String(Math.floor(hours%1*60)).padStart(2,'0')}`;if($('time-value').textContent!==text)$('time-value').textContent=text;};
   $('time').addEventListener('input',event=>{sky.time=Number((event.target as HTMLInputElement).value);updateTime();});
   document.querySelectorAll<HTMLButtonElement>('[data-time]').forEach(button=>button.addEventListener('click',()=>{sky.time=Number(button.dataset.time);$<HTMLInputElement>('time').value=String(sky.time);updateTime();}));
   $('reset-settings').addEventListener('click',()=>{Object.assign(config,defaults);sky.time=6000;applySettings();updateTime();});
   const settings=()=>{settingsReturn=ui;menu('settings-menu');$('settings-back').focus();void audio.start().catch(cause=>report(`音声を再生できません: ${cause}`));};
-  $('map-settings').addEventListener('click',settings);$('pause-settings').addEventListener('click',settings);$('settings-back').addEventListener('click',()=>{menu(settingsReturn);$(settingsReturn==='map-menu'?'map-settings':'pause-settings').focus();});
+  $('home-settings').addEventListener('click',settings);$('pause-settings').addEventListener('click',settings);$('settings-back').addEventListener('click',()=>{menu(settingsReturn);$(settingsReturn==='home-menu'?'home-settings':'pause-settings').focus();});
   const spawn=()=>{if(!player||!world)return;player.stop();player.position.splice(0,3,...world.data.spawn);player.yaw=Math.PI-world.data.yaw*Math.PI/180;player.pitch=0;player.movement.flying=false;player.movement.grounded=false;while(player.collision.overlaps(...player.position)&&player.position[1]<world.data.bounds.max[1])player.position[1]++;player.update(0);};
   async function choose(name:string) {
-    const token=++request;selected=name;entered=false;hud.hide();hud.selectWorld(name);enter.disabled=true;error.hidden=true;loading.textContent='ワールドを読み込み中…';
-    document.querySelectorAll<HTMLButtonElement>('[data-world]').forEach(button=>{const active=button.dataset.world===name;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));});
-    worldReady=false;player?.stop();controls.reset();debris.clear();audio.weather([],camera,false);if(world){scene.remove(world.root);world.dispose();}world=new World(assets,name);world.radius=config.view;scene.add(world.root);sky.select(name);
-    const current=world;
+    const token=++request;selected=name;entered=false;hud.hide();enter.disabled=true;error.hidden=true;loading.textContent='ワールドを読み込み中…';menu('loading-menu');$<HTMLProgressElement>('load-progress').removeAttribute('value');
+    worldReady=false;player?.stop();controls.reset();debris.clear();held.clear();audio.weather([],camera,false);pendingImport?.dispose();pendingImport=undefined;if(world){scene.remove(world.root);world.dispose();world=null;}
+    let imported:ImportResult|undefined,source:ImportedWorld|undefined;
     try {
-      await Promise.all([current.start((done,total)=>{if(token===request)loading.textContent=`ワールドを読み込み中… ${Math.round(done/total*100)}%`;}),weather.select(name)]);
+      const record=records.get(samples[name]?'sample:'+name:name),theme=samples[name]?(name.startsWith('tutorial')?'vanilla':name):'vanilla';
+      let pack:Awaited<ReturnType<ResourcePack['apply']>>|undefined;
+      const materials=materialQueue.catch(()=>{}).then(async()=>{if(token!==request)return;resourcePack.reset();if(record?.pack)return resourcePack.apply(record.pack,message=>{if(token===request)loading.textContent=message;},theme);});materialQueue=materials;pack=await materials;
+      if(token!==request)return;
+      if(samples[name])assets.manifest.worlds[name]=structuredClone(samples[name]);
+      else {if(!record)throw new Error('保存したワールドが見つかりません');source=new ImportedWorld();pendingImport=source;source.progress=message=>{if(token===request)loading.textContent=message;};imported=await source.load(record,assets.manifest);if(token!==request){source.dispose();return;}record.version=imported.version;if(imported.icon)record.icon=new Blob([imported.icon],{type:'image/png'});assets.manifest.worlds[name]=imported.manifest;}
+      if(pack){const original=assets.manifest.worlds[name].environment??{sun:'sun.png',moon:'moon.png',clouds:'clouds.png'};assets.manifest.worlds[name].environment={...original,...pack.environment};await sky.loadEnvironment(assets.manifest.worlds[name].environment!);}
+      if(token!==request){source?.dispose();return;}
+      held.clear();hud.selectWorld(name,theme);world=new World(assets,name,source);pendingImport=undefined;world.radius=config.view;scene.add(world.root);sky.select(name);const current=world;
+      await Promise.all([current.start((done,total)=>{if(token===request){loading.textContent=`ワールドを読み込み中… ${Math.round(done/Math.max(1,total)*100)}%`;const bar=$<HTMLProgressElement>('load-progress');bar.max=total||1;bar.value=done;}}),weather.select(name,imported?.climate)]);
       if(token!==request)return;
       if(!player){player=new Player(camera,model,current.collision,canvas,locked=>{
         document.body.classList.toggle('playing',locked);$('hud').hidden=!locked;$('menus').inert=locked;
         if(locked){entered=true;hud.hide();error.hidden=true;}else {if(entered&&ui!=='map-menu'&&ui!=='inventory')menu('pause-menu');if(entered&&ui!=='inventory')$('resume').focus();}
-      });}player.collision=current.collision;player.movement.collision=current.collision;worldReady=true;spawn();audio.select(name);applySettings();enter.disabled=false;loading.textContent='';
-    }catch(cause){if(token===request){report(cause);loading.textContent='読み込みに失敗しました。別のワールドを選択してください。';}}
+      });}player.collision=current.collision;player.movement.collision=current.collision;worldReady=true;spawn();audio.select(samples[name]?name:'tutorial');applySettings();enter.disabled=false;loading.textContent='';menu('pause-menu');$('resume').textContent='ワールドを開く';
+      if(imported?.warnings.length)console.info('World import:',imported.warnings);
+      return current;
+    }catch(cause){source?.dispose();if(pendingImport===source)pendingImport=undefined;if(token===request){report(cause);menu('map-menu');void refreshList();}}
   }
-  document.querySelectorAll<HTMLButtonElement>('[data-world]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.world!==selected)void choose(button.dataset.world!);}));
-  const play=()=>{if(!player)return;ui='playing';void player.lock().catch(cause=>{menu(entered?'pause-menu':'map-menu');report(cause);});void audio.start().catch(cause=>report(`音声を再生できません: ${cause}`));};
-  enter.addEventListener('click',play);$('resume').addEventListener('click',play);
+  async function openSelected(){if(selected)await choose(selected);}
+  const play=()=>{if(!player||!worldReady)return;ui='playing';$('resume').textContent='ワールドに戻る';document.body.classList.remove('panorama-menu');void player.lock().catch(cause=>{menu('pause-menu');report(cause);});void audio.start().catch(cause=>report(`音声を再生できません: ${cause}`));};
+  enter.addEventListener('click',()=>void openSelected());$('resume').addEventListener('click',play);
+  const cancelLoading=()=>{request++;pendingImport?.dispose();pendingImport=undefined;worldReady=false;if(world){scene.remove(world.root);world.dispose();world=null;}entered=false;menu('map-menu');void refreshList();};$('cancel-loading').onclick=cancelLoading;
   $('respawn').addEventListener('click',()=>{spawn();play();});
   $('reset-map').addEventListener('click',()=>{if(!worldReady||!world)return;$('reset-map-name').textContent=world.data.name;menu('reset-menu');$('cancel-reset').focus();});
   const cancelReset=()=>{menu('pause-menu');$('reset-map').focus();};
   $('cancel-reset').addEventListener('click',cancelReset);
-  $('confirm-reset').addEventListener('click',()=>{if(!worldReady||!world)return;world.edits.clear();menu('map-menu');void choose(selected);});
-  $('change-map').addEventListener('click',()=>{entered=false;menu('map-menu');document.exitPointerLock();enter.focus();});
+  $('confirm-reset').addEventListener('click',()=>{if(!worldReady||!world)return;world.edits.clear();void choose(selected);});
+  $('change-map').addEventListener('click',()=>{entered=false;worldReady=false;hud.hide();controls.reset();debris.clear();if(world){scene.remove(world.root);world.dispose();world=null;}audio.select('menu');menu('home-menu');document.exitPointerLock();$('home-worlds').focus();});
   window.addEventListener('wheel',event=>{if(player?.locked){event.preventDefault();hud.select(hud.inventory.selected+Math.sign(event.deltaY));}},{passive:false});
   const controls=new CreativeControls(()=>{
     if(!player?.locked||!world||!worldReady)return;model.swing();const hit=world.target(player.eye.toArray(),player.look.toArray());
@@ -110,13 +161,15 @@ async function init() {
     if(player?.locked){if(event.code==='KeyE'&&!event.repeat){event.preventDefault();ui='inventory';hud.show();document.exitPointerLock();}if(event.code==='F3'){event.preventDefault();debug=!debug;$('debug').hidden=!debug;}if(/^Digit[1-9]$/.test(event.code))hud.select(Number(event.code.slice(-1))-1);}
     else if(event.code==='Escape'&&ui==='settings-menu')menu(settingsReturn);
     else if(event.code==='Escape'&&ui==='reset-menu')cancelReset();
+    else if(event.code==='Escape'){if(ui==='loading-menu')cancelLoading();else if(ui==='pack-menu')menu(packReturn);else if(ui==='help-menu')menu(helpReturn);else if(ui==='map-menu')menu('home-menu');else if(ui==='add-menu'||ui==='delete-menu')menu('map-menu');else if(ui.endsWith('-menu')&&ui!=='home-menu'&&ui!=='pause-menu')menu('settings-menu');}
+    else if(ui==='map-menu'&&event.target instanceof HTMLElement&&!event.target.closest('input,select')){const buttons=[...document.querySelectorAll<HTMLButtonElement>('[data-world]')];if(event.code==='ArrowDown'||event.code==='ArrowUp'){event.preventDefault();const index=buttons.findIndex(b=>b.dataset.world===selected),next=buttons[Math.max(0,Math.min(buttons.length-1,index+(event.code==='ArrowDown'?1:-1)))];if(next){selectEntry(next.dataset.world!);next.focus();next.scrollIntoView({block:'nearest'});}}else if(event.code==='Enter'&&selected&&event.target.id!=='enter')void openSelected();}
   });
   canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();document.exitPointerLock();report('描画が中断されました。ページを再読み込みしてください。');});
   applySettings();let last=performance.now(),elapsed=0,frames=0,fps=0,fpsTime=0,stepPosition:number[]|null=null,stepDistance=0,wasGrounded=false;
   renderer.setAnimationLoop(time=>{
     const dt=Math.min((time-last)/1000,.1);last=time;if(document.hidden)return;
     elapsed+=dt;assets.time.value=elapsed;
-    if(player&&world&&worldReady){if(player.locked){player.update(dt);controls.update(dt);}world.update(player.position,player.locked?world.radius:1);if(player.position[1]<-20)spawn();if(world.error&&error.hidden){if(player.locked)document.exitPointerLock();report(world.error);}}
+    if(player&&world&&worldReady){if(player.locked){player.update(dt);controls.update(dt);}world.update(player.position,player.locked?world.radius:1);if(player.position[1]<world.data.bounds.min[1]-20)spawn();if(world.error&&error.hidden){if(player.locked)document.exitPointerLock();report(world.error);}}
     if(player&&world){held.select(hud.selectedItem,hud.worldTheme);held.update(dt,model,player.locked&&player.perspective===0);outline.update(worldReady&&player.locked?world.target(player.eye.toArray(),player.look.toArray()):null,assets.manifest.blocks,player.locked);debris.update(dt,camera,world,player.locked);}
     if(player&&world&&worldReady){
       const p=player.position,m=player.movement,distance=stepPosition?Math.hypot(p[0]-stepPosition[0],p[2]-stepPosition[2]):0;
@@ -138,11 +191,11 @@ async function init() {
     const inWater=!!underwater&&camera.position.y-Math.floor(camera.position.y)<fluidHeight(assets.manifest.blocks[underwater],assets.manifest.blocks[aboveWater??0],'water');document.body.classList.toggle('underwater',inWater);
     if(inWater){fog.color.set(sky.environment?.water_fog_color??'#20417b');fog.near=0;fog.far=sky.environment?.water_fog_distance??24;}
     audio.weather(weather.consumeRainSounds(),camera,!!player?.locked&&worldReady&&!inWater);
-    renderer.render(scene,camera);frames++;fpsTime+=dt;if(fpsTime>1){fps=Math.round(frames/fpsTime);frames=0;fpsTime=0;}
-    if(ui==='settings-menu'){$<HTMLInputElement>('time').value=String(sky.time);updateTime();}
+    if(document.body.classList.contains('panorama-menu'))panorama.render(renderer,dt);else renderer.render(scene,camera);frames++;fpsTime+=dt;if(fpsTime>1){fps=Math.round(frames/fpsTime);frames=0;fpsTime=0;}
+    if(ui==='world-settings-menu'){$<HTMLInputElement>('time').value=String(sky.time);updateTime();}
     if(debug&&player&&world)$('debug').textContent=`${fps} FPS\nXYZ ${player.position.map(n=>n.toFixed(1)).join(' / ')}\n${world.data.name}\n${player.movement.flying?'Flying':player.movement.swimming?'Swimming':'Walking'}`;
   });
-  await choose(selected);
-  if(new URLSearchParams(location.search).has('debug'))Object.defineProperty(window,'memorySpace',{configurable:true,get:()=>({player,world,renderer,scene,camera,assets,sky,audio,weather,hud,config,controls,held,outline,debris})});
+  await refreshList();menu('home-menu');$('menus').inert=false;$('menus').removeAttribute('aria-busy');
+  if(new URLSearchParams(location.search).has('debug'))Object.defineProperty(window,'memorySpace',{configurable:true,get:()=>({player,world,renderer,scene,camera,assets,sky,audio,weather,hud,config,controls,held,outline,debris,store,resourcePack,records})});
 }
 void init().catch(report);

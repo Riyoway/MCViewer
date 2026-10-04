@@ -141,7 +141,7 @@ export function meshChunk(voxels: Voxels, blocks: Block[], origin: Vec3, lightin
   const opaqueAt=(x:number,y:number,z:number)=>{const block=blocks[sample(x,y,z)];return !!block&&(block.occludes||block.name.endsWith('_leaves'));};
   const level=(p:Vec3)=>lighting(p[0]+origin[0],p[1]+origin[1],p[2]+origin[2]);
   const own=chunks.get(13);if(!own)return {opaque,transparent};
-  const full=own.every(id=>blocks[id]?.occludes);
+  const full=own.every(id=>blocks[id]?.occludes&&blocks[id]?.cube);
   for (let face = 0; face < 6; face++) {
     const axis = Math.floor(face / 2), a = (axis + 1) % 3, b = (axis + 2) % 3, dir = directions[face];
     for (let slice = 0; slice < CHUNK; slice++) {

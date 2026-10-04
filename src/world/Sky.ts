@@ -38,6 +38,9 @@ export class Sky {
     }
     this.cloudRenderer.setTexture(this.textures.get(this.environment?.clouds??'clouds.png')!);
   }
+  async loadEnvironment(environment:NonNullable<Sky['environment']>){
+    const loader=new TextureLoader();for(const file of [environment.sun,environment.moon,environment.clouds])if(!this.textures.has(file)){const texture=await loader.loadAsync(assetUrl(file));texture.magFilter=texture.minFilter=NearestFilter;texture.colorSpace=SRGBColorSpace;this.textures.set(file,texture);}
+  }
   update(dt:number,eye:Vector3,fog:Fog,legacy:boolean,distance:number,weather={rainLevel:0,thunderLevel:0,flash:0}) {
     if(this.cycle)this.time=(this.time+dt*24000/(this.minutes*60))%24000;
     const angle=this.time/24000*Math.PI*2,elevation=Math.sin(angle),day=Math.max(0,Math.min(1,(elevation+.15)/.35)),rain=weather.rainLevel,thunder=weather.thunderLevel;this.daylight=Math.min(1,.08+.92*day*(1-rain*.5)*(1-thunder*.5)+weather.flash*.6);

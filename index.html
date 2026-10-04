@@ -4,66 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#262626" />
-  <meta name="description" content="Minecraft Console Editionのワールドを探索する3Dビューア。" />
-  <title>Minecraft Worlds</title>
+  <meta name="description" content="MinecraftのワールドをResource Packと一緒に読み込んで探索するWebビューア。" />
+  <title>Minecraft World Viewer</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 </head>
 <body>
   <canvas id="world" tabindex="-1" aria-label="3Dワールド"></canvas>
-  <div id="menus">
-    <main id="map-menu" class="panel">
-      <h1>ワールド選択</h1>
-      <div id="maps" class="map-list" aria-label="ワールド"></div>
-      <p id="loading" role="status" aria-live="polite">素材を読み込み中…</p>
-      <div class="actions"><button id="enter" disabled>プレイ</button><button id="map-settings">設定</button></div>
-      <p class="controls">WASD 移動 · Space ジャンプ · Ctrl ダッシュ · Shift スニーク<br />左クリック 破壊 · 右クリック 設置 / ドア · 中央クリック 取得<br />E インベントリ · 1–9 / ホイール 選択 · F5 / V 視点 · Esc メニュー<br />Space 2回で飛行 · 飛行中はSpace / Shiftで上下</p>
-    </main>
-    <section id="pause-menu" class="panel compact" hidden>
-      <h1>ゲームメニュー</h1>
-      <button id="resume">ゲームに戻る</button>
-      <button id="pause-settings">設定</button>
-      <button id="respawn">スポーン地点に戻る</button>
-      <button id="reset-map">マップをリセット</button>
-      <button id="change-map">ワールド選択</button>
-    </section>
-    <section id="reset-menu" class="panel" role="dialog" aria-modal="true" aria-labelledby="reset-title" hidden>
-      <h1 id="reset-title">マップをリセットしますか？</h1>
-      <p id="reset-map-name"></p>
-      <p>設置・破壊したブロックとドアの状態を元に戻します。この操作は取り消せません。</p>
-      <div class="actions"><button id="confirm-reset">リセット</button><button id="cancel-reset">キャンセル</button></div>
-    </section>
-    <section id="settings-menu" class="panel settings" hidden>
-      <h1>設定</h1>
-      <div class="settings-grid">
-        <label>表示<select id="legacy"><option value="true">Legacy Console</option><option value="false">Java</option></select></label>
-        <label>Gamma <output id="gamma-value">50%</output><input id="gamma" type="range" min="0" max="100" value="50" /></label>
-        <label>視野角 <output id="fov-value">70</output><input id="fov" type="range" min="40" max="110" value="70" /></label>
-        <label>描画距離 <output id="view-value">6 chunks</output><input id="view" type="range" min="3" max="12" value="6" /></label>
-        <label>描画解像度<select id="resolution"><option value="720">720p</option><option value="480">480p</option><option value="0">画面と同じ</option></select></label>
-        <label>マウス感度 <output id="sensitivity-value">100%</output><input id="sensitivity" type="range" min="20" max="200" value="100" /></label>
-        <label>BGM <output id="volume-value">50%</output><input id="volume" type="range" min="0" max="100" value="50" /></label>
-        <label>効果音 <output id="effects-value">70%</output><input id="effects" type="range" min="0" max="100" value="70" /></label>
-        <label class="check"><input id="mipmap" type="checkbox" checked /> ミップマップ</label>
-        <label class="check"><input id="viewBobbing" type="checkbox" /> 視点の揺れ</label>
-        <label class="check"><input id="clouds" type="checkbox" checked /> 雲</label>
-      </div>
-      <fieldset><legend>昼夜</legend>
-        <label>時刻 <output id="time-value">12:00</output><input id="time" type="range" min="0" max="23999" step="100" value="6000" /></label>
-        <div class="time-presets"><button data-time="0">朝</button><button data-time="6000">昼</button><button data-time="12000">夕方</button><button data-time="18000">夜</button></div>
-        <label class="check"><input id="cycle" type="checkbox" checked /> 昼夜サイクル</label>
-        <label>1日の長さ <output id="minutes-value">20分</output><input id="minutes" type="range" min="1" max="60" value="20" /></label>
-      </fieldset>
-      <fieldset><legend>天候</legend>
-        <label>天候<select id="weather"><option value="clear">晴れ</option><option value="rain">雨</option><option value="thunder">雷雨</option><option value="snow">雪（全域）</option></select></label>
-        <p class="weather-note">雨・雷雨は寒い地域では雪になります。砂漠などには降りません。</p>
-        <label>降水量 <output id="weatherIntensity-value">100%</output><input id="weatherIntensity" type="range" min="0" max="100" value="100" /></label>
-        <label class="check"><input id="weatherCycle" type="checkbox" /> 天候を自動で変える</label>
-        <label>変化の間隔 <output id="weatherMinutes-value">10分</output><input id="weatherMinutes" type="range" min="1" max="30" value="10" /></label>
-      </fieldset>
-      <div class="actions"><button id="settings-back">完了</button><button id="reset-settings">初期設定</button></div>
-    </section>
-    <div id="error" role="alert" hidden></div>
-  </div>
+  <div id="menus"><p>素材を読み込んでいます...</p></div>
   <div id="hud" hidden aria-hidden="true"><div class="crosshair"></div><div id="hotbar"></div><div id="debug" hidden></div><div id="water-overlay"></div></div>
   <div id="inventory-screen" hidden>
     <section id="inventory-panel" role="dialog" aria-modal="true" aria-label="インベントリ">

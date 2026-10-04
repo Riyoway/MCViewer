@@ -1,0 +1,1 @@
+Menu textures and bitmap fonts extracted from the user-provided Minecraft-1.12.2-js.html (Eaglercraft 1.12.2 Offline), embedded EPK v2 resources. Original texture pixels preserved. Extraction: npm run menu-assets -- <path-to-html>.

@@ -43,8 +43,9 @@ export class Hud {
   }
   static async create(assets:AssetManager){const response=await fetch(assetUrl('ui/assets.json'));if(!response.ok)throw new Error('UI素材を読み込めません。');return new Hud(assets,await response.json());}
   private slot(x:number,y:number){const button=document.createElement('button');button.className='inventory-slot';button.style.left=`${x}px`;button.style.top=`${y}px`;button.tabIndex=-1;button.addEventListener('pointerleave',()=>this.tooltip.hidden=true);this.panel.append(button);return button;}
-  selectWorld(name:string){
-    this.world=name;this.theme=this.data.themes[name.startsWith('tutorial')?'vanilla':name];this.icons.clear();this.catalog=this.theme.items;this.search.value='';this.row=0;
+  selectWorld(name:string,theme?:string){
+    this.material.map!.dispose();this.material.map=this.assets.opaque.map!.clone();this.material.map.minFilter=NearestFilter;this.material.map.needsUpdate=true;this.material.needsUpdate=true;
+    this.world=name;this.theme=this.data.themes[theme??(name.startsWith('tutorial')?'vanilla':name)]??this.data.themes.vanilla;this.icons.clear();this.catalog=this.theme.items;this.search.value='';this.row=0;
     this.hotbar.style.backgroundImage=`url("${assetUrl(this.theme.hotbar)}")`;this.panel.style.backgroundImage=`url("${assetUrl(this.theme.inventory)}")`;
     this.scroller.style.setProperty('--scroller',`url("${assetUrl(this.theme.scroller)}")`);
     (document.querySelector('.crosshair') as HTMLElement).style.backgroundImage=`url("${assetUrl(this.theme.crosshair)}")`;

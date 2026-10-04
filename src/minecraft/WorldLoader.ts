@@ -10,8 +10,9 @@ import {traceBlock,type BlockHit} from './Target';
 import {Building,type BlockChange} from './Building';
 import {EditStore} from './EditStore';
 import {runEditJob,type EditJob,type EditResult} from './EditJob';
+import type {WorldSource} from '../viewer/ImportWorld';
 
-interface Column {group:Group;keys:string[];surface:Float32Array;rainSurface:Uint16Array;sections:Map<string,Group>;bases:{mesh:Mesh;data:PackedMesh;owners?:Int16Array;transparent:boolean}[]}
+interface Column {group:Group;keys:string[];surface:Float32Array;rainSurface:Int16Array;sections:Map<string,Group>;bases:{mesh:Mesh;data:PackedMesh;owners?:Int16Array;transparent:boolean}[]}
 
 async function readCompressed(file:string,signal:AbortSignal) {
   const response=await fetch(assetUrl(file),{signal});if(!response.ok)throw new Error(`チャンクを読み込めません: ${file}`);
@@ -28,10 +29,10 @@ export class World {
   readonly edits:EditStore;readonly building:Building;private terrainTiles=new Set<number>();private dirty=new Set<string>();
   private worker?:Worker;private job?:EditJob;private revision=0;private lightEdits=new Map<string,Vec3>();private ready:EditResult['meshes']=[];
   radius=6;error='';
-  constructor(readonly assets:AssetManager,readonly name:string) {
+  constructor(readonly assets:AssetManager,readonly name:string,private source?:WorldSource) {
     this.data=assets.manifest.worlds[name];if(!this.data)throw new Error(`ワールドがありません: ${name}`);
     this.collision=new Collision(this.voxels,assets.manifest.blocks);
-    this.edits=new EditStore(name);this.building=new Building(this.voxels,assets.manifest,name.startsWith('tutorial')?'vanilla':name,p=>this.validPosition(p));
+    this.edits=new EditStore(name);this.building=new Building(this.voxels,assets.manifest,this.data.theme??(name.startsWith('tutorial')?'vanilla':name),p=>this.validPosition(p));
     for(const block of assets.manifest.blocks)if(block){for(const tile of [...block.tiles,...block.fluidTiles??[]])this.terrainTiles.add(tile);for(const element of block.elements)for(const face of Object.values(element.faces))if(face)this.terrainTiles.add(face.tile);}
     for(const column of this.data.chunks)this.columns.set(`${column.origin[0]/16},${column.origin[2]/16}`,column);
     this.collision.loaded=(x,z)=>this.loaded.has(`${Math.floor(x/16)},${Math.floor(z/16)}`);
@@ -56,9 +57,9 @@ export class World {
     if(this.loaded.has(key))return Promise.resolve();if(this.pending.has(key))return this.pending.get(key)!;
     const column=this.columns.get(key)!;
     const operation=(async()=>{
-      const [meshBuffer,voxelBuffer]=await Promise.all([readCompressed(column.file,this.controller.signal),readCompressed(column.voxels,this.controller.signal)]);
+      const {meshBuffer,voxelBuffer}=this.source?await this.source.read(column.origin):await Promise.all([readCompressed(column.file,this.controller.signal),readCompressed(column.voxels,this.controller.signal)]).then(([meshBuffer,voxelBuffer])=>({meshBuffer,voxelBuffer}));
       if(this.disposed)return;
-      const group=new Group(),surface=new Float32Array(256).fill(0),rainSurface=new Uint16Array(256),keys=decodeColumn(voxelBuffer,column.origin[0],column.origin[2],this.voxels,this.lights);
+      const group=new Group(),surface=new Float32Array(256).fill(this.data.bounds?.min[1]??0),rainSurface=new Int16Array(256).fill(this.data.bounds?.min[1]??0),keys=decodeColumn(voxelBuffer,column.origin[0],column.origin[2],this.voxels,this.lights);
       const bases:Column['bases']=[];
       decodeMeshes(meshBuffer).forEach((data,i)=>{if(data.indices.length){const mesh=this.assets.mesh(data,i===1);group.add(mesh);bases.push({mesh,data,transparent:i===1});}});
       const edited=this.edits.apply(column.origin[0]/16,column.origin[2]/16,this.building.theme,this.assets.manifest,(p,id)=>this.voxels.set(...p,id),p=>this.voxels.get(...p));
@@ -121,9 +122,9 @@ export class World {
   private validPosition(p:Vec3){const bounds=this.data.bounds??{min:[-Infinity,0,-Infinity],max:[Infinity,320,Infinity]};return p.every((n,i)=>Number.isInteger(n)&&n>=bounds.min[i]&&n<bounds.max[i])&&this.collision.loaded(p[0],p[2]);}
   destroy(hit:BlockHit){const changes=this.building.destroy(hit);return changes.length?this.change(changes):false;}
   place(item:string,hit:BlockHit,direction:Vec3,player:Vec3){const changes=this.building.place(item,hit,direction,player);return changes?this.change(changes):false;}
-  private markDirty(p:Vec3){for(let y=Math.max(0,p[1]-1)>>4;y<=(p[1]+1)>>4;y++)for(let z=(p[2]-1)>>4;z<=(p[2]+1)>>4;z++)for(let x=(p[0]-1)>>4;x<=(p[0]+1)>>4;x++)this.dirty.add(`${x},${y},${z}`);}
-  private refreshSurface(p:Vec3){const column=this.loaded.get(`${p[0]>>4},${p[2]>>4}`);if(!column)return;const index=(p[2]&15)*16+(p[0]&15);column.surface[index]=0;column.rainSurface[index]=0;
-    for(let y=0;y<(this.data.bounds?.max[1]??320);y++){const block=this.assets.manifest.blocks[this.voxels.get(p[0],y,p[2])];if(block?.solid||block?.fluid){column.surface[index]=Math.max(column.surface[index],y+(block.fluid?1:Math.max(0,...block.collision.map(box=>box.to[1]))));column.rainSurface[index]=y+1;}}
+  private markDirty(p:Vec3){for(let y=Math.max(this.data.bounds?.min[1]??0,p[1]-1)>>4;y<=(p[1]+1)>>4;y++)for(let z=(p[2]-1)>>4;z<=(p[2]+1)>>4;z++)for(let x=(p[0]-1)>>4;x<=(p[0]+1)>>4;x++)this.dirty.add(`${x},${y},${z}`);}
+  private refreshSurface(p:Vec3){const column=this.loaded.get(`${p[0]>>4},${p[2]>>4}`);if(!column)return;const index=(p[2]&15)*16+(p[0]&15);column.surface[index]=this.data.bounds?.min[1]??0;column.rainSurface[index]=this.data.bounds?.min[1]??0;
+    for(let y=this.data.bounds?.min[1]??0;y<(this.data.bounds?.max[1]??320);y++){const block=this.assets.manifest.blocks[this.voxels.get(p[0],y,p[2])];if(block?.solid||block?.fluid){column.surface[index]=Math.max(column.surface[index],y+(block.fluid?1:Math.max(0,...block.collision.map(box=>box.to[1]))));column.rainSurface[index]=y+1;}}
   }
   private refreshLighting(positions:Vec3[]){for(const p of positions)this.lightEdits.set(p.join(','),p);}
   private setBlock({position:p,id}:BlockChange){const old=this.voxels.get(...p);if(old===id)return false;this.edits.record(p,old,id,this.assets.manifest);this.voxels.set(...p,id);this.markDirty(p);this.refreshSurface(p);
@@ -146,7 +147,7 @@ export class World {
     const inside=(key:string)=>{const [x,,z]=key.split(',').map(Number);return x>=minX>>4&&x<=maxX>>4&&z>=minZ>>4&&z<=maxZ>>4;};
     const sections=[...this.dirty].filter(inside);for(const key of sections)this.dirty.delete(key);for(const p of positions)this.lightEdits.delete(p.join(','));
     const snapshot=(source:Voxels)=>[...source.chunks].filter(([key])=>inside(key)).map(([key,data])=>[key,data.slice()] as [string,Uint16Array]);
-    const job:EditJob={revision:this.revision,positions,sections,height:this.data.bounds?.max[1]??320,columns:[...this.loaded.keys()],voxels:snapshot(this.voxels),lights:snapshot(this.lights)};this.job=job;
+    const job:EditJob={revision:this.revision,positions,sections,height:this.data.bounds?.max[1]??320,minY:this.data.bounds?.min[1]??0,columns:[...this.loaded.keys()],voxels:snapshot(this.voxels),lights:snapshot(this.lights)};this.job=job;
     if(this.worker)this.worker.postMessage(job,[...job.voxels,...job.lights].map(([,data])=>data.buffer));
     else this.finishJob(runEditJob(job,this.assets.manifest.blocks));
   }
@@ -194,6 +195,6 @@ export class World {
   private release(group:Group) {
     group.traverse(object=>{if(object instanceof Mesh){if(!object.userData.door)object.geometry.dispose();else this.doorMeshes.delete(object.position.toArray().join(','));}});
   }
-  dispose(){this.edits.flush();this.disposed=true;this.controller.abort();this.worker?.terminate();this.ready=[];this.job=undefined;for(const {group} of this.loaded.values())this.release(group);for(const mesh of this.doorGeometry.values())mesh.geometry.dispose();this.loaded.clear();this.voxels.chunks.clear();this.lights.chunks.clear();this.root.clear();}
+  dispose(){this.edits.flush();this.disposed=true;this.controller.abort();this.worker?.terminate();this.source?.dispose();this.ready=[];this.job=undefined;for(const {group} of this.loaded.values())this.release(group);for(const mesh of this.doorGeometry.values())mesh.geometry.dispose();this.loaded.clear();this.voxels.chunks.clear();this.lights.chunks.clear();this.root.clear();}
   get stats(){return {loaded:this.loaded.size,pending:this.pending.size,sections:this.voxels.chunks.size,editing:!!this.job||!!this.dirty.size||!!this.ready.length||!!this.lightEdits.size};}
 }

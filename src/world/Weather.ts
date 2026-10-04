@@ -51,14 +51,14 @@ export class Weather {
     for(const theme of Object.values(ui.themes)){const texture=await loader.loadAsync(assetUrl(theme.particles));texture.magFilter=texture.minFilter=NearestFilter;texture.generateMipmaps=false;texture.colorSpace=SRGBColorSpace;weather.textures.set(theme.particles,texture);}
     return weather;
   }
-  async select(name:string){
+  async select(name:string,importedClimate?:ClimateData){
     this.climateRequest?.abort();this.climateRequest=new AbortController();
-    const token=++this.selection,world=this.data.worlds[name];this.columns.clear();this.climate=undefined;this.rainSounds=new RainSounds();this.soundClock=0;this.soundEvents=[];this.flash=0;this.bolt.visible=false;this.thunderDelay=-1;this.thunderEvents=0;this.lightningTime=8+this.random()*12;
+    const token=++this.selection,world=this.data.worlds[name]??this.data.worlds.tutorial;this.columns.clear();this.climate=undefined;this.rainSounds=new RainSounds();this.soundClock=0;this.soundEvents=[];this.flash=0;this.bolt.visible=false;this.thunderDelay=-1;this.thunderEvents=0;this.lightningTime=8+this.random()*12;
     this.rain.geometry.setDrawRange(0,0);this.snow.geometry.setDrawRange(0,0);
-    const particleTexture=this.textures.get(`ui/${name.startsWith('tutorial')?'vanilla':name}-particles.png`);if(particleTexture)this.splashes.select(particleTexture);else this.splashes.clear();
+    const particleTexture=this.textures.get(`ui/${name.startsWith('tutorial')?'vanilla':name}-particles.png`)??this.textures.get('ui/vanilla-particles.png');if(particleTexture)this.splashes.select(particleTexture);else this.splashes.clear();
     if(!world)throw new Error(`天候データがありません: ${name}`);
     for(const type of ['rain','snow'] as const){this[type].material.map=this.textures.get(world[type])!;this[type].material.needsUpdate=true;}
-    const data=await readJSON<ClimateData>(world.climate,this.climateRequest.signal);if(token===this.selection)this.climate=new Climate(data);
+    const data=importedClimate??await readJSON<ClimateData>(world.climate,this.climateRequest.signal);if(token===this.selection)this.climate=new Climate(data);
   }
   setMode(mode:WeatherMode){if(this.mode===mode)return;this.mode=modes.includes(mode)?mode:'clear';if(this.mode!=='clear')this.precipitationMode=this.mode;this.cycleTime=0;if(this.mode!=='thunder'){this.flash=0;this.bolt.visible=false;this.thunderDelay=-1;this.thunderEvents=0;}}
   kind(x:number,y:number,z:number):Precipitation{return this.mode==='clear'&&this.rainLevel<.001?'none':this.precipitationMode==='snow'?'snow':precipitation(this.climate?.at(x,y,z),y);}

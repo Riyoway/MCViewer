@@ -14,6 +14,7 @@ export class HeldItem {
     this.blockMaterial.customProgramCacheKey=()=> 'minecraft-held-block-v1';
   }
   select(item:InventoryItem|undefined,theme:UITheme){this.requested=item;this.theme=theme;this.pending=item?`${theme.itemsTexture}:${item.id}`:'';}
+  clear(){this.key=this.pending='';this.requested=undefined;this.height=0;for(const object of [...this.pose.children]){object.removeFromParent();if(object instanceof Mesh)object.geometry.dispose();}this.blockMaterial.map=this.assets.opaque.map;this.blockMaterial.needsUpdate=true;}
   private async replace(item:InventoryItem|undefined,theme:UITheme,key:string){
     for(const object of [...this.pose.children]){this.pose.remove(object);if(object instanceof Mesh)object.geometry.dispose();}
     if(!item)return;

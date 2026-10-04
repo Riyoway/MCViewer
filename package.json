@@ -13,7 +13,9 @@
     "building-assets": "tsx scripts/building-assets.ts",
     "particle-assets": "tsx scripts/particle-assets.ts",
     "fluid-assets": "tsx scripts/fluid-assets.ts",
-    "test": "tsx tests/check.ts && tsx tests/building.ts"
+    "menu-assets": "tsx scripts/viewer-menu-assets.ts",
+    "viewer-data": "tsx scripts/viewer-data.ts",
+    "test": "tsx tests/check.ts && tsx tests/building.ts && tsx tests/viewer.ts"
   },
   "dependencies": {
     "three": "^0.180.0"

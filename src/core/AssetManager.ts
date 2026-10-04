@@ -5,7 +5,7 @@ import type { PackedMesh } from '../minecraft/binary';
 
 const external=import.meta.env?.VITE_ASSET_BASE_URL,base=(external||`${import.meta.env?.BASE_URL??'/'}generated`).replace(/\/$/,'');
 const version=typeof __ASSET_VERSION__==='undefined'?'local':__ASSET_VERSION__;
-export const assetUrl=(file:string)=>`${base}/${!external&&import.meta.env?.PROD?`${version}/`:''}${file}`;
+export const assetUrl=(file:string)=>/^(blob:|data:|https?:)/.test(file)?file:`${base}/${!external&&import.meta.env?.PROD?`${version}/`:''}${file}`;
 // Mojang's lightmap.fsh: independent sky/block light, warm block-light curve and Gamma.
 export const lightmap=`uniform float daylight;uniform float gamma;
 vec3 minecraftLight(vec2 level,float glow) {
@@ -32,8 +32,9 @@ export class AssetManager {
     this.transparent.transparent=true;this.transparent.depthWrite=false;
     this.transparent.onBeforeCompile=material.onBeforeCompile;
     this.transparent.customProgramCacheKey=()=> 'minecraft-atlas-v4';
-    for(const block of manifest.blocks)if(block&&['glass','glass_pane'].includes(block.name))for(const element of block.elements)for(const face of Object.values(element.faces))if(face)this.cutoutTiles.add(face.tile);
+    this.refreshCutouts();
   }
+  refreshCutouts(){this.cutoutTiles.clear();for(const block of this.manifest.blocks)if(block&&['glass','glass_pane'].includes(block.name))for(const element of block.elements)for(const face of Object.values(element.faces))if(face)this.cutoutTiles.add(face.tile);}
   static async load() {
     const response=await fetch(assetUrl('manifest.json'));
     if(!response.ok)throw new Error('素材が見つかりません。npm run assets を実行してください。');
