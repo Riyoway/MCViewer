@@ -42,7 +42,13 @@ export async function checkAppOutput(directory: string) {
   return size;
 }
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
-export async function verifyCdn(base: string, origin: string, root = resolve('public/generated')) {
+export async function verifyCdn(base: string, origin: string, root = resolve('public/generated'), challengeFallback?: string) {
+  if (challengeFallback) {
+    challengeFallback = externalAssetUrl(challengeFallback, true)!;
+    const primary = new URL(externalAssetUrl(base, true)!), fallback = new URL(challengeFallback);
+    if (!/^pub-[a-f0-9]{32}\.r2\.dev$/.test(fallback.hostname) || fallback.pathname !== primary.pathname)
+      throw new Error('ASSET_CHECK_BASE_URL must use an R2 development hostname and the same immutable asset path as VITE_ASSET_BASE_URL.');
+  }
   const manifestBytes = await readFile(join(root, 'manifest.json'));
   const manifest = JSON.parse(manifestBytes.toString('utf8'));
   // Verify every sample's spawn data, plus the startup textures/data. A 200 HTML error page must fail too.
@@ -53,8 +59,16 @@ export async function verifyCdn(base: string, origin: string, root = resolve('pu
     if (!nearest) throw new Error('Sample world has no chunks.');
     paths.add(nearest.file); paths.add(nearest.voxels);
   }
+  let checkedBase = base;
   for (const file of paths) {
-    const response = await fetch(`${base}/${file}`, { headers: { Origin: origin }, signal: AbortSignal.timeout(60000) });
+    const request = () => fetch(`${checkedBase}/${file}`, { headers: { Origin: origin }, signal: AbortSignal.timeout(60000) });
+    let response = await request();
+    if (checkedBase === base && challengeFallback && response.status === 403 && response.headers.get('cf-mitigated') === 'challenge') {
+      await response.body?.cancel();
+      console.warn(`Cloudflare challenged the build client at ${base}. Checking published files via ${challengeFallback}; browser assets continue to use the custom CDN.`);
+      checkedBase = challengeFallback;
+      response = await request();
+    }
     if (!response.ok) {
       const details = ['server', 'cf-mitigated', 'cf-ray'].map(name => {
         const value = response.headers.get(name); return value ? `${name}=${value}` : '';
@@ -62,7 +76,7 @@ export async function verifyCdn(base: string, origin: string, root = resolve('pu
       const body = await response.text();
       const reason = body.match(/<title>([^<]{1,200})<\/title>/i)?.[1] || body.match(/<Code>([^<]{1,200})<\/Code>/i)?.[1];
       if (reason) details.push(reason);
-      throw new Error(`CDN request failed: ${base}/${file} (HTTP ${response.status}${details.length ? '; ' + details.join('; ') : ''}).${response.status === 403 ? ' Check public bucket access and security rules for this CDN hostname.' : ''}`);
+      throw new Error(`CDN request failed: ${checkedBase}/${file} (HTTP ${response.status}${details.length ? '; ' + details.join('; ') : ''}).${response.status === 403 ? ' Check public bucket access and security rules for this CDN hostname.' : ''}`);
     }
     const cors = response.headers.get('access-control-allow-origin');
     if (cors !== '*' && cors !== origin) { await response.body?.cancel(); throw new Error(`CDN CORS does not allow ${origin}: ${file}`); }
@@ -70,7 +84,7 @@ export async function verifyCdn(base: string, origin: string, root = resolve('pu
     const remote = new Uint8Array(await response.arrayBuffer()), local = file === 'manifest.json' ? manifestBytes : await readFile(join(root, file));
     if (digest(remote) !== digest(local)) throw new Error(`CDN assets differ from this checkout: ${file}. Publish a new version instead of overwriting immutable URLs.`);
   }
-  console.log(`CDN verified: ${paths.size} files, all ${Object.keys(manifest.worlds).length} sample worlds, CORS and exact content.`);
+  console.log(`CDN verified: ${paths.size} files, all ${Object.keys(manifest.worlds).length} sample worlds, CORS and exact content (${checkedBase}).`);
 }
 function aws(args: string[]) {
   const result = spawnSync('aws', args, { stdio: 'inherit', shell: false });
@@ -85,7 +99,7 @@ async function main() {
     return;
   }
   if (action === 'verify') {
-    await verifyCdn(externalAssetUrl(env.VITE_ASSET_BASE_URL, true)!, env.ASSET_CHECK_ORIGIN || 'https://mcviewer.riyo.me');
+    await verifyCdn(externalAssetUrl(env.VITE_ASSET_BASE_URL, true)!, env.ASSET_CHECK_ORIGIN || 'https://mcviewer.riyo.me', resolve('public/generated'), env.ASSET_CHECK_BASE_URL);
     return;
   }
   const version = assetVersion(), size = await inventory(resolve('public/generated'));

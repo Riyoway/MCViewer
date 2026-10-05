@@ -24,7 +24,7 @@ VercelにはJavaScript・CSS・メニュー画像・フォント・ローカル�
 
 ## Minecraft専用の配信先
 
-サイトとVercelプロジェクトは`mcviewer`、サイトのドメインは`mcviewer.riyo.me`。専用バケットは`minecraft-world-viewer-assets`、公開ドメインは`assets.mcviewer.riyo.me`。既存のPrivate-arcadeのバケット・素材・プロジェクト設定には変更を加えていない。GitHubリポジトリは引き続き`Riyoway/mineconsole`。
+サイトとVercelプロジェクトは`mcviewer`、サイトのドメインは`mcviewer.riyo.me`。専用バケットは`minecraft-world-viewer-assets`、公開ドメインは`assets.mcviewer.riyo.me`。既存のPrivate-arcadeのバケット・素材・プロジェクト設定には変更を加えていない。GitHubリポジトリは引き続き`Riyoway/mcviewer`。
 
 VercelのProductionとPreviewには、次の環境変数を設定する。
 
@@ -37,6 +37,20 @@ VITE_ASSET_BASE_URL=https://assets.mcviewer.riyo.me/generated/50dcf0c41c4a33f4e6
 2026-10-05にCDNを`assets.mcviewer.riyo.me`へ変更した。同じバケットの同じオブジェクトを配信するため、素材の複製・再アップロードは行わない。旧CDNの`assets.mineconsole.riyo.me`も、既に開かれたページからの取得を維持するため有効にしている。サイトのDNSはCloudflareでCNAME `mcviewer` → `cname.vercel-dns.com`（DNS only）。VercelでDNS構成の正常判定とプロジェクトの再開を確認済み。ProductionとPreviewの`VITE_ASSET_BASE_URL`も新CDNへ更新している。
 
 新CDNでも全14サンプルの開始地点を含む33ファイルの一致・CORSと公開用ビルドを再検証した。実ブラウザで14サンプルの一覧とTU46の開始地点を確認し、新CDNへの162リクエストがエラーなく完了した。旧CDNへのリクエストはなかった。
+
+### VercelのビルドがCloudflareの403で止まる場合
+
+2026-10-05のVercelビルドでは、CloudflareのSecurity Eventsで`source: botFight`・`ruleId: bot_fight_mode`のチャレンジを確認した。Bot Fight Modeはホスト単位でSkipできないため、既存サイトの設定は維持し、専用R2バケットの開発用URLをビルド検証にだけ使用する。[Bot Fight Modeの制限](https://developers.cloudflare.com/bots/get-started/bot-fight-mode/#rules)
+
+ProductionとPreviewのビルド用環境変数は次の値。`VITE_`を付けず、ブラウザには渡さない。
+
+```text
+ASSET_CHECK_BASE_URL=https://pub-05a87b24ae2541febc212d4112922429.r2.dev/generated/50dcf0c41c4a33f4e6224e15cb8b3c96e01c0a44
+```
+
+検証はまず本番CDNへ接続し、HTTP 403かつ`cf-mitigated: challenge`の場合だけこのURLへ切り替える。R2開発用ホストと本番URLの素材パス・commit SHAが一致しない設定を拒否し、切り替え後も全14サンプルの開始地点を含む33ファイルのSHA-256・CORS・圧縮ヘッダーを検証する。通常の403、404、データの不一致はそのままビルドを停止する。素材を更新するときは両方の環境変数のSHAを揃える。
+
+`r2.dev`には開発用のレート制限があり、本番の配信先には使わない。ブラウザは引き続き`assets.mcviewer.riyo.me`を参照する。検証URLにも同じ公開素材が見えるが、Private-arcadeのバケットやBot Fight Mode設定には変更を加えない。[R2公開バケット](https://developers.cloudflare.com/r2/buckets/public-buckets/)
 
 2026-10-05に81,855ファイル・2,536,740,005バイトの初回公開を完了。全オブジェクトの件数・容量を照合し、全14サンプルの開始地点を含む33ファイルのSHA-256とCORSを検証した。専用の一時Workerで転送し、完了後にそのWorkerを削除している。実ブラウザではTU1・TU46・Halloween・Marioの各開始地点9チャンクを読み込み、通信エラーとJavaScriptエラーがないことを確認した。`npm test`と実CDNを参照する`npm run build:vercel`は成功し、出力は250ファイル・6.11 MiB。公開記録は[deployment/asset-release.json](../deployment/asset-release.json)に保存している。
 

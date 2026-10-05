@@ -45,6 +45,31 @@ try {
     const message = (error as Error).message;
     return message.includes(`${base}/manifest.json`) && message.includes('HTTP 403') && message.includes('cf-mitigated=challenge') && message.includes('fixture-ray') && message.includes('Cloudflare');
   });
+  const fallback = `https://pub-${'b'.repeat(32)}.r2.dev/generated/${sha}`;
+  await assert.rejects(verifyCdn(base, 'https://viewer.example.com', directory, fallback.replace(sha, 'c'.repeat(40))), /same immutable asset path/);
+  await assert.rejects(verifyCdn(base, 'https://viewer.example.com', directory, base), /R2 development hostname/);
+  let fallbackFailure: 'missing' | 'denied' | 'content' | 'cors' | undefined;
+  const fallbackRequests: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    assert.equal((init?.headers as Record<string, string>).Origin, 'https://viewer.example.com');
+    const address = String(url); fallbackRequests.push(address);
+    if (address.startsWith(base + '/')) {
+      if (fallbackFailure === 'missing') return new Response('Missing', { status: 404 });
+      if (fallbackFailure === 'denied') return new Response('AccessDenied', { status: 403 });
+      return new Response('<title>Just a moment...</title>', { status: 403, headers: { 'cf-mitigated': 'challenge' } });
+    }
+    assert(address.startsWith(fallback + '/'));
+    const path = address.slice(fallback.length + 1);
+    return new Response(fallbackFailure === 'content' ? 'corrupt' : files[path] as BodyInit, { headers: { 'Access-Control-Allow-Origin': fallbackFailure === 'cors' ? 'https://other.example.com' : '*' } });
+  }) as typeof fetch;
+  await verifyCdn(base, 'https://viewer.example.com', directory, fallback);
+  assert.equal(fallbackRequests.filter(url => url.startsWith(base + '/')).length, 1);
+  assert.equal(fallbackRequests.filter(url => url.startsWith(fallback + '/')).length, 7);
+  for (const [kind, message] of [['missing', /HTTP 404/], ['denied', /HTTP 403/], ['content', /differ/], ['cors', /CORS/]] as const) {
+    fallbackFailure = kind; fallbackRequests.length = 0;
+    await assert.rejects(verifyCdn(base, 'https://viewer.example.com', directory, fallback), message);
+    if (kind === 'missing' || kind === 'denied') assert.equal(fallbackRequests.filter(url => url.startsWith(fallback + '/')).length, 0);
+  }
   assert.equal((await inventory(directory)).files, 7);
   const app = join(directory, 'app'); await mkdir(join(app, 'menu'), { recursive: true });
   for (const file of ['index.html', 'menu/logo.png', 'menu/viewer-data.json', 'menu/native-models.json', 'favicon.svg']) await writeFile(join(app, file), 'fixture');
