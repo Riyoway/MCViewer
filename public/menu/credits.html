@@ -30,7 +30,7 @@
     <li>Native reference data: official Minecraft client resources and <a href="https://github.com/PrismarineJS/minecraft-assets">PrismarineJS / minecraft-assets</a>.</li>
     <li>Tutorial world conversion sources: <a href="https://github.com/Nostalgica-Reverie/tutorial-addon-worlds">Nostalgica-Reverie / tutorial-addon-worlds</a>.</li>
     <li>Legacy Mash-up source references: <a href="https://github.com/BrandonItaly/LCE-Resources">BrandonItaly / LCE-Resources</a>.</li>
-    <li>Festive Mash-up Patch contributors: AgentMindStorm, JPthePixel, Whenrix, rosetintedroom, Kryzor, DeepdishBKent, Ocean and Scoop. See the <a href="festive-credits.md">complete bundled contributor credits</a>.</li>
+    <li><span>Festive Mash-up Patch contributors:</span> AgentMindStorm, JPthePixel, Whenrix, rosetintedroom, Kryzor, DeepdishBKent, Ocean and Scoop. <span>See the</span> <a href="festive-credits.md">complete bundled contributor credits</a>.</li>
   </ul>
 
   <h2>Open-source software</h2>
@@ -41,5 +41,14 @@
   <p>Refer to the <a href="https://www.minecraft.net/en-us/usage-guidelines">Minecraft Usage Guidelines</a>, <a href="https://www.minecraft.net/en-us/eula">Minecraft EULA</a>, <a href="https://www.minecraft.net/en-us/credits">official Minecraft credits</a> and the relevant rights holders' terms.</p>
   <a class="back" href="/">Back to Viewer</a>
 </main>
+<script type="module">
+// Original bundled license texts stay intact; this page shares the viewer's language.
+let code='en';try{code=localStorage.getItem('viewer-language')||'en';}catch{}
+if(!['en','ja','zh-CN','zh-TW','ko'].includes(code))code='en';
+try{const response=await fetch('locales/'+code+'.json');if(!response.ok)throw Error('language');const {ui}=await response.json();document.documentElement.lang=code;
+const walker=document.createTreeWalker(document.querySelector('main'),NodeFilter.SHOW_TEXT),nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
+for(const node of nodes){const source=node.textContent,key=source.trim();if(ui[key])node.textContent=source.replace(key,ui[key]);else for(const prefix of ['Minecraft World Viewer is maintained by','Native reference data: official Minecraft client resources and','Tutorial world conversion sources:','Legacy Mash-up source references:','Festive Mash-up Patch contributors:','The viewer uses','Their MIT copyright and license notices are preserved in','Refer to the','See the'])if(key.startsWith(prefix)){node.textContent=source.replace(prefix,ui[prefix]||prefix);break;}}
+document.title=(ui['Credits & Notices']||'Credits & Notices')+' · Minecraft World Viewer';}catch{/* English remains readable when offline. */}
+</script>
 </body>
 </html>

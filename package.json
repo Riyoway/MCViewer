@@ -20,7 +20,7 @@
     "fluid-assets": "tsx scripts/fluid-assets.ts",
     "menu-assets": "tsx scripts/viewer-menu-assets.ts",
     "viewer-data": "tsx scripts/viewer-data.ts",
-    "test": "tsx tests/check.ts && tsx tests/building.ts && tsx tests/viewer.ts && tsc --project tsconfig.hosting.json && tsx tests/hosting.ts"
+    "test": "tsx tests/check.ts && tsx tests/building.ts && tsx tests/viewer.ts && tsx tests/language.ts && tsc --project tsconfig.hosting.json && tsx tests/hosting.ts"
   },
   "dependencies": {
     "three": "^0.180.0"

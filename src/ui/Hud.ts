@@ -3,6 +3,7 @@ import { AssetManager,assetUrl } from '../core/AssetManager';
 import { appendElement,emptyMesh } from '../minecraft/Mesher';
 import { Inventory,filterItems } from './Inventory';
 import type { UIAssets,UITheme,InventoryItem } from './types';
+import {itemNames,t} from './Language';
 
 // Native GUI pixels: 182 x 22 hotbar and 195 x 136 creative search inventory.
 export class Hud {
@@ -60,6 +61,10 @@ export class Hud {
     this.inventory.load(saved,this.theme.items);this.drawHotbar();this.drawCatalog();this.setLegacy(this.legacy);
   }
   setLegacy(legacy:boolean){this.legacy=legacy;if(this.theme){this.selection.style.backgroundImage=`url("${assetUrl(legacy?this.theme.legacySelection:this.theme.selection)}")`;const [width,height]=legacy?this.theme.legacySelectionSize:this.theme.selectionSize;this.selection.style.width=`${width}px`;this.selection.style.height=`${height}px`;}}
+  setLanguage(){
+    const names=itemNames();for(const theme of Object.values(this.data.themes))for(const item of theme.items)item.name=names[item.id]??item.id.replaceAll('_',' ');
+    if(this.theme){this.catalog=filterItems(this.theme.items,this.search.value);this.row=Math.min(this.row,this.maxRow);this.drawCatalog();this.drawHotbar();this.showTooltip(this.hovered);}
+  }
   select(slot:number){this.inventory.select(slot);this.drawHotbar();}
   get selectedItem(){return this.item(this.inventory.hotbar[this.inventory.selected]);}
   get worldTheme(){return this.theme;}
@@ -87,7 +92,7 @@ export class Hud {
   private drawCursor(){this.cursor.hidden=!this.inventory.cursor;this.icon(this.cursor,this.item(this.inventory.cursor));}
   private showTooltip(item:InventoryItem|null){this.tooltip.hidden=!item||!!this.inventory.cursor;this.tooltip.textContent=item?.name??'';}
   private icon(element:HTMLElement,item?:InventoryItem){
-    element.replaceChildren();element.dataset.item=item?.id??'';element.setAttribute('aria-label',item?.name??'Empty Slot');if(!item)return;
+    element.replaceChildren();element.dataset.item=item?.id??'';element.setAttribute('aria-label',item?.name??t('Empty Slot'));if(!item)return;
     const sprite=document.createElement('span');sprite.className='item-icon';
     if(item.icon!==undefined){sprite.style.backgroundImage=`url("${assetUrl(this.theme.itemsTexture)}")`;sprite.style.backgroundSize=`${this.theme.itemColumns*16}px auto`;sprite.style.backgroundPosition=`${-item.icon%this.theme.itemColumns*16}px ${-Math.floor(item.icon/this.theme.itemColumns)*16}px`;}
     else if(item.block!==undefined)sprite.style.backgroundImage=`url("${this.blockIcon(item)}")`;

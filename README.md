@@ -10,7 +10,7 @@ Three.js + TypeScript + Viteで、Java版の保存済みワールドをブラウ
 
 対応範囲はJava AnvilのOverworldです。Bedrockの`.mcworld`/LevelDB、外部`.mcc`チャンク、Zstd圧縮、Mob・Block Entityの個別データ、OptiFine/シェーダー固有機能は対象外です。追加ワールドの絵画Entityは未対応です。用意されたパレットにないブロックは石、ない状態は最も近い状態で表示し、読み込み結果の`unsupported`に記録します。高解像度のパックも読み込みますが、テクスチャは既存の32pxアトラスへ縮小し、`.mcmeta`のフレーム間補間は行いません。サンプルワールドの絵画など、これまでの再現は保持します。
 
-UIの表示言語は英語です。アイテム名の英語データは`npm run ui-language`で再生成します。
+UIは英語（初期値）・日本語・中国語（簡体字／繁体字）・韓国語に対応します。ホームの地球アイコン、またはOptions → Languageから変更できます。言語はブラウザに保存され、開いているワールドや設定、ユーザーが付けた名前は切り替えでリセットしません。アイテム名は公式1.13の翻訳を優先し、新しいIDは1.21.6の翻訳を使用します。UI・アイテム名の辞書は`npm run ui-language`で再生成します。時刻ボタンはビューア独自の機能で、昼（07:00 / 1000）・正午（12:00 / 6000）・夜（19:00 / 13000）・深夜（00:00 / 18000）へ切り替えます。
 
 ホームにMinecraftの著作権と非公式表記を表示し、ホーム・ポーズメニューの「Credits & Notices」から権利者・素材の出典・コミュニティ貢献者・ライブラリのライセンスを確認できます。公開用の表記は[public/menu/credits.html](public/menu/credits.html)に収録しています。素材の権利はそれぞれの権利者に帰属し、著作権表記によって再配布の許諾が付与されるものではありません。[Minecraft Usage Guidelines](https://www.minecraft.net/en-us/usage-guidelines)
 
