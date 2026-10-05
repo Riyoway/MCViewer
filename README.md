@@ -10,6 +10,8 @@ Three.js + TypeScript + Viteで、Java版の保存済みワールドをブラウ
 
 対応範囲はJava AnvilのOverworldです。Bedrockの`.mcworld`/LevelDB、外部`.mcc`チャンク、Zstd圧縮、Mob・Block Entityの個別データ、OptiFine/シェーダー固有機能は対象外です。追加ワールドの絵画Entityは未対応です。用意されたパレットにないブロックは石、ない状態は最も近い状態で表示し、読み込み結果の`unsupported`に記録します。高解像度のパックも読み込みますが、テクスチャは既存の32pxアトラスへ縮小し、`.mcmeta`のフレーム間補間は行いません。サンプルワールドの絵画など、これまでの再現は保持します。
 
+UIの表示言語は英語です。アイテム名の英語データは`npm run ui-language`で再生成します。
+
 メニュー素材の再抽出は`npm run menu-assets -- <HTMLのパス>`。ワールド読み込み用の旧ID・バイオーム表と、アトラスの元テクスチャ名は`npm run viewer-data`で再生成します。元のブロック番号・アトラスの画素は変えません。
 
 ## 起動

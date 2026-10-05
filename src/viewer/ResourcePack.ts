@@ -14,11 +14,11 @@ export class ResourcePack {
   constructor(readonly assets:AssetManager){this.originalTexture=assets.opaque.map!;this.originalBlocks=assets.manifest.blocks.slice();this.originalTiles=structuredClone(assets.manifest.atlas.tiles);for(const [i,t] of this.originalTiles.entries())if(t.key)this.originals.set(i,t.key);}
   reset(){this.assets.opaque.map=this.assets.transparent.map=this.originalTexture;this.assets.opaque.needsUpdate=this.assets.transparent.needsUpdate=true;this.texture?.dispose();this.texture=undefined;this.assets.manifest.blocks=this.originalBlocks.slice();this.assets.manifest.atlas.tiles=structuredClone(this.originalTiles);this.assets.refreshCutouts();for(const url of this.urls)URL.revokeObjectURL(url);this.urls=[];}
   async apply(file:LocalFile,progress:(message:string)=>void,theme='vanilla'){
-    this.reset();progress('Resource Packを展開しています…');const raw=await unzipFiles(new Uint8Array(await file.blob.arrayBuffer())),files:Record<string,Uint8Array>=Object.create(null);
+    this.reset();progress('Unpacking resource pack...');const raw=await unzipFiles(new Uint8Array(await file.blob.arrayBuffer())),files:Record<string,Uint8Array>=Object.create(null);
     for(const [name,bytes] of Object.entries(raw))files[safePath(name)]=bytes;
-    const metaPath=Object.keys(files).find(name=>/(^|\/)pack\.mcmeta$/.test(name));if(!metaPath)throw new Error('Resource Packに pack.mcmeta がありません');
+    const metaPath=Object.keys(files).find(name=>/(^|\/)pack\.mcmeta$/.test(name));if(!metaPath)throw new Error('Resource pack is missing pack.mcmeta');
     const root=metaPath.slice(0,-11),decoder=new TextDecoder(),json=(path:string)=>{const bytes=files[root+path];return bytes?JSON.parse(decoder.decode(bytes)):undefined;};
-    const meta=json('pack.mcmeta');if(!meta?.pack)throw new Error('pack.mcmeta の形式が不正です');
+    const meta=json('pack.mcmeta');if(!meta?.pack)throw new Error('Invalid pack.mcmeta format');
     const overlays=(meta.overlays?.entries??[]).map((e:any)=>e.directory+'/');
     const getFile=(path:string)=>{for(const overlay of overlays.slice().reverse())if(files[root+overlay+path])return files[root+overlay+path];return files[root+path];};
     const source=(texture:string)=>{let [namespace,path]=texture.includes(':')?texture.split(':',2):['minecraft',texture];path=path.replace(/^blocks?\//,'');
@@ -34,9 +34,9 @@ export class ResourcePack {
       const found=source(texture);if(!found)return undefined;const picture=await image(found.path,found.bytes),animation=found.meta;
       const width=animation?.width??picture.width,height=animation?.height??(animation?width:picture.height),framesAvailable=Math.floor(picture.width/width)*Math.floor(picture.height/height);
       let ticks=animation?.frametime??1,sequence:{index:number;time:number}[]=animation?(animation.frames??Array.from({length:framesAvailable},(_,i)=>i)).map((v:any)=>typeof v==='number'?{index:v,time:ticks}:{index:v.index,time:v.time??ticks}):[{index:0,time:1}];
-      sequence=sequence.filter(f=>Number.isInteger(f.index)&&f.index>=0&&f.index<framesAvailable&&Number.isInteger(f.time)&&f.time>0);if(!sequence.length)throw new Error(`アニメーションのフレームが不正です: ${found.path}`);
+      sequence=sequence.filter(f=>Number.isInteger(f.index)&&f.index>=0&&f.index<framesAvailable&&Number.isInteger(f.time)&&f.time>0);if(!sequence.length)throw new Error(`Invalid animation frames: ${found.path}`);
       const gcd=(a:number,b:number):number=>b?gcd(b,a%b):a;ticks=sequence.reduce((n,f)=>gcd(n,f.time),sequence[0].time);
-      const order=sequence.flatMap(f=>Array.from({length:f.time/ticks},()=>f.index));if(order.length>1024||next+order.length>columns*columns)throw new Error('Resource Packのアニメーションがアトラス容量を超えます');
+      const order=sequence.flatMap(f=>Array.from({length:f.time/ticks},()=>f.index));if(order.length>1024||next+order.length>columns*columns)throw new Error('Resource pack animations exceed atlas capacity');
       const id=existing??atlas.tiles.length,old=existing===undefined?undefined:atlas.tiles[existing],tile:Tile={start:next,frames:order.length,ticks,size:old?.size??[atlas.pixels-1,atlas.pixels-1],key:'vanilla:'+texture};
       for(const frame of order){const x=next%columns*atlas.cell,y=Math.floor(next/columns)*atlas.cell;ctx.clearRect(x,y,atlas.cell,atlas.cell);
         const sx=(frame%Math.floor(picture.width/width))*width,sy=Math.floor(frame/Math.floor(picture.width/width))*height;
@@ -54,7 +54,7 @@ export class ResourcePack {
     try{
       for(const [id,key] of this.originals){if(!key.startsWith(theme+':'))continue;const parts=key.slice(theme.length+1).split(':'),texture=parts[0];if(texture==='layer')continue;await put(texture,id,parts[1]?.split(',').map(Number));}
       const [natives,nativeStates]=await Promise.all(['native-models.json','native-states.json'].map(file=>fetch(`${import.meta.env.BASE_URL}menu/${file}`).then(r=>r.json()))),models=new Map<string,any>();
-      const readModel=(name:string,depth=0):any=>{if(depth>24)throw new Error('モデルの親が循環しています');if(models.has(name))return models.get(name);const [namespace,path]=name.includes(':')?name.split(':',2):['minecraft',name],clean=path.replace(/^blocks?\//,''),custom=json(`assets/${namespace}/models/${path}.json`)??json(`assets/${namespace}/models/block/${clean}.json`)??json(`assets/${namespace}/models/blocks/${clean}.json`),own=custom??(namespace==='minecraft'?natives[clean]:undefined);if(!own)return undefined;const parent=own.parent?readModel(own.parent,depth+1):{};const result={...parent,...own,custom:!!custom||!!parent?.custom,textures:{...parent?.textures,...own.textures},elements:own.elements??parent?.elements};models.set(name,result);return result;};
+      const readModel=(name:string,depth=0):any=>{if(depth>24)throw new Error('Circular model inheritance');if(models.has(name))return models.get(name);const [namespace,path]=name.includes(':')?name.split(':',2):['minecraft',name],clean=path.replace(/^blocks?\//,''),custom=json(`assets/${namespace}/models/${path}.json`)??json(`assets/${namespace}/models/block/${clean}.json`)??json(`assets/${namespace}/models/blocks/${clean}.json`),own=custom??(namespace==='minecraft'?natives[clean]:undefined);if(!own)return undefined;const parent=own.parent?readModel(own.parent,depth+1):{};const result={...parent,...own,custom:!!custom||!!parent?.custom,textures:{...parent?.textures,...own.textures},elements:own.elements??parent?.elements};models.set(name,result);return result;};
       const tileFor=async(texture:string)=>{if(customTiles.has(texture))return customTiles.get(texture);const added=await put(texture);let id=added;if(id===undefined)id=[...this.originals].find(([,key])=>key===`vanilla:${texture.replace(/^minecraft:/,'').replace(/^block\//,'')}`)?.[0];if(id!==undefined)customTiles.set(texture,id);return id;};
       for(const [id,block] of this.originalBlocks.entries()){
         if(block?.theme!==theme)continue;
@@ -64,7 +64,7 @@ export class ResourcePack {
         if(chosen)variants.push(Array.isArray(chosen)?chosen[0]:chosen);for(const part of state.multipart??[])if(matches(part.when))variants.push(Array.isArray(part.apply)?part.apply[0]:part.apply);
         if(!customState&&!variants.some(variant=>readModel(variant.model)?.custom))continue;
         const elements:Element[]=[];for(const variant of variants){const model=readModel(variant.model);if(!model?.elements)continue;
-          const resolve=(t:string,depth=0):string=>{if(depth>24)throw new Error('モデルのテクスチャが循環しています');return t?.startsWith('#')?resolve(model.textures[t.slice(1)],depth+1):t;};
+          const resolve=(t:string,depth=0):string=>{if(depth>24)throw new Error('Circular model texture reference');return t?.startsWith('#')?resolve(model.textures[t.slice(1)],depth+1):t;};
           for(const e of model.elements){const element:Element={from:e.from.map((n:number)=>n/16),to:e.to.map((n:number)=>n/16),faces:{},transform:[variant.x??0,variant.y??0,0],uvlock:!!variant.uvlock};if(e.rotation)element.rotation={...e.rotation,origin:e.rotation.origin.map((n:number)=>n/16)};
             for(const [face,f] of Object.entries(e.faces??{}) as [FaceName,any][]){const texture=resolve(f.texture),tile=await tileFor(texture);if(tile===undefined)continue;const a=e.from,b=e.to,uv=f.uv??(face==='up'?[a[0],a[2],b[0],b[2]]:face==='down'?[a[0],16-b[2],b[0],16-a[2]]:face==='east'?[16-b[2],16-b[1],16-a[2],16-a[1]]:face==='west'?[a[2],16-b[1],b[2],16-a[1]]:face==='north'?[16-b[0],16-b[1],16-a[0],16-a[1]]:[a[0],16-b[1],b[0],16-a[1]]);element.faces[face]={tile,uv,tint:f.tintindex>=0,cull:f.cullface,rotation:f.rotation};}elements.push(element);
           }
@@ -73,7 +73,7 @@ export class ResourcePack {
       }
       this.texture=new CanvasTexture(canvas);this.texture.magFilter=NearestFilter;this.texture.minFilter=NearestMipmapLinearFilter;this.texture.colorSpace=SRGBColorSpace;this.assets.opaque.map=this.assets.transparent.map=this.texture;this.assets.opaque.needsUpdate=this.assets.transparent.needsUpdate=true;this.assets.refreshCutouts();
       const environment:Record<string,string>={};for(const [key,path] of [['sun','sun'],['moon','moon_phases'],['clouds','clouds']] as const){const found=source('environment/'+path);if(found){const url=URL.createObjectURL(new Blob([found.bytes.slice().buffer],{type:'image/png'}));this.urls.push(url);environment[key]=url;}}
-      progress(`${replaced}枚のテクスチャを読み込みました`);return {name:file.name.replace(/\.zip$/i,''),replaced,environment,format:meta.pack.pack_format};
+      progress(`Loaded ${replaced} textures`);return {name:file.name.replace(/\.zip$/i,''),replaced,environment,format:meta.pack.pack_format};
     }catch(error){this.reset();throw error;}finally{for(const bitmap of imageCache.values())(await bitmap).close();}
   }
 }

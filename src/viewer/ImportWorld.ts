@@ -11,10 +11,10 @@ export class ImportedWorld implements WorldSource {
   private call<T>(type:string,data:unknown,transfer:Transferable[]=[]):Promise<T>{const id=++this.serial;return new Promise((resolve,reject)=>{this.pending.set(id,{resolve,reject});this.worker.postMessage({id,type,data},transfer);});}
   async load(world:SavedWorld,manifest:Manifest):Promise<ImportResult>{
     const files=await Promise.all(world.files.map(async file=>({name:file.name,bytes:await file.blob.arrayBuffer()})));
-    const [response,data]=await Promise.all([fetch(`${import.meta.env.BASE_URL}menu/viewer-data.json`),Promise.resolve(manifest)]);if(!response.ok)throw new Error('読み込み用データがありません');
+    const [response,data]=await Promise.all([fetch(`${import.meta.env.BASE_URL}menu/viewer-data.json`),Promise.resolve(manifest)]);if(!response.ok)throw new Error('Import data not found');
     const palette:Manifest={...data,blocks:data.blocks.map(b=>b?.theme==='vanilla'?b:null as unknown as Block),lookup:Object.fromEntries(Object.entries(data.lookup).filter(([key])=>key.startsWith('vanilla:'))),worlds:{},audio:{},effects:{}};
     return this.call('load',{files,manifest:palette,reference:await response.json(),name:world.name},files.map(f=>f.bytes));
   }
   read(origin:Vec3){return this.call<{meshBuffer:ArrayBuffer;voxelBuffer:ArrayBuffer}>('column',{origin});}
-  dispose(){this.worker.terminate();for(const request of this.pending.values())request.reject(new Error('読み込みを中断しました'));this.pending.clear();}
+  dispose(){this.worker.terminate();for(const request of this.pending.values())request.reject(new Error('Loading cancelled'));this.pending.clear();}
 }

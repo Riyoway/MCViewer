@@ -41,7 +41,13 @@ export class Hud {
     this.overlay.addEventListener('pointerdown',event=>{if(event.target===this.overlay){this.inventory.cursor=null;this.drawCursor();}});
     window.addEventListener('resize',()=>this.resize());this.resize();
   }
-  static async create(assets:AssetManager){const response=await fetch(assetUrl('ui/assets.json'));if(!response.ok)throw new Error('UI素材を読み込めません。');return new Hud(assets,await response.json());}
+  static async create(assets:AssetManager){
+    const [response,language]=await Promise.all([fetch(assetUrl('ui/assets.json')),fetch(`${import.meta.env.BASE_URL}menu/item-names.json`)]);
+    if(!response.ok||!language.ok)throw new Error('Unable to load UI assets.');
+    const data:UIAssets=await response.json(),names:Record<string,string>=await language.json();
+    for(const theme of Object.values(data.themes))for(const item of theme.items)item.name=names[item.id]??item.id.replaceAll('_',' ');
+    return new Hud(assets,data);
+  }
   private slot(x:number,y:number){const button=document.createElement('button');button.className='inventory-slot';button.style.left=`${x}px`;button.style.top=`${y}px`;button.tabIndex=-1;button.addEventListener('pointerleave',()=>this.tooltip.hidden=true);this.panel.append(button);return button;}
   selectWorld(name:string,theme?:string){
     this.material.map!.dispose();this.material.map=this.assets.opaque.map!.clone();this.material.map.minFilter=NearestFilter;this.material.map.needsUpdate=true;this.material.needsUpdate=true;
@@ -81,7 +87,7 @@ export class Hud {
   private drawCursor(){this.cursor.hidden=!this.inventory.cursor;this.icon(this.cursor,this.item(this.inventory.cursor));}
   private showTooltip(item:InventoryItem|null){this.tooltip.hidden=!item||!!this.inventory.cursor;this.tooltip.textContent=item?.name??'';}
   private icon(element:HTMLElement,item?:InventoryItem){
-    element.replaceChildren();element.dataset.item=item?.id??'';element.setAttribute('aria-label',item?.name??'空のスロット');if(!item)return;
+    element.replaceChildren();element.dataset.item=item?.id??'';element.setAttribute('aria-label',item?.name??'Empty Slot');if(!item)return;
     const sprite=document.createElement('span');sprite.className='item-icon';
     if(item.icon!==undefined){sprite.style.backgroundImage=`url("${assetUrl(this.theme.itemsTexture)}")`;sprite.style.backgroundSize=`${this.theme.itemColumns*16}px auto`;sprite.style.backgroundPosition=`${-item.icon%this.theme.itemColumns*16}px ${-Math.floor(item.icon/this.theme.itemColumns)*16}px`;}
     else if(item.block!==undefined)sprite.style.backgroundImage=`url("${this.blockIcon(item)}")`;

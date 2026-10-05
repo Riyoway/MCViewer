@@ -1,21 +1,21 @@
 <!doctype html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#262626" />
-  <meta name="description" content="MinecraftのワールドをResource Packと一緒に読み込んで探索するWebビューア。" />
+  <meta name="description" content="Import and explore Minecraft worlds with their resource packs in your browser." />
   <title>Minecraft World Viewer</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 </head>
 <body>
-  <canvas id="world" tabindex="-1" aria-label="3Dワールド"></canvas>
-  <div id="menus"><p>素材を読み込んでいます...</p></div>
+  <canvas id="world" tabindex="-1" aria-label="3D World"></canvas>
+  <div id="menus"><p>Loading assets...</p></div>
   <div id="hud" hidden aria-hidden="true"><div class="crosshair"></div><div id="hotbar"></div><div id="debug" hidden></div><div id="water-overlay"></div></div>
   <div id="inventory-screen" hidden>
-    <section id="inventory-panel" role="dialog" aria-modal="true" aria-label="インベントリ">
-      <span class="inventory-title">検索</span><input id="item-search" aria-label="アイテムを検索" autocomplete="off" spellcheck="false" />
-      <div id="inventory-scroll" role="scrollbar" aria-label="アイテム一覧" aria-valuemin="0" aria-valuenow="0" aria-orientation="vertical"></div>
+    <section id="inventory-panel" role="dialog" aria-modal="true" aria-label="Inventory">
+      <span class="inventory-title">Search Items</span><input id="item-search" aria-label="Search Items" autocomplete="off" spellcheck="false" />
+      <div id="inventory-scroll" role="scrollbar" aria-label="Items" aria-valuemin="0" aria-valuenow="0" aria-orientation="vertical"></div>
     </section>
     <div id="item-tooltip" hidden></div><div id="item-cursor" hidden></div>
   </div>

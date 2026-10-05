@@ -7,10 +7,10 @@ export class AudioManager {
   private rainVoices=new Set<AudioBufferSourceNode>();private rainGain:GainNode|null=null;private rainGeneration=0;private rainAudible=false;
   private forward=new Vector3();private up=new Vector3();
   constructor(readonly sources:Record<string,string|null>,readonly sounds:Record<string,string[]>={}){}
-  select(world:string){this.pause();this.rainGeneration++;this.rainAudible=false;for(const source of this.rainVoices)source.stop();this.rainVoices.clear();if(this.track){this.track.removeAttribute('src');this.track.load();}const file=this.sources[world];this.track=file?new Audio(assetUrl(file)):null;if(this.track){this.track.loop=true;this.track.volume=this.volume;this.track.preload='none';this.track.addEventListener('error',()=>{this.error='BGMを読み込めません。ページを再読み込みしてください。';});}}
+  select(world:string){this.pause();this.rainGeneration++;this.rainAudible=false;for(const source of this.rainVoices)source.stop();this.rainVoices.clear();if(this.track){this.track.removeAttribute('src');this.track.load();}const file=this.sources[world];this.track=file?new Audio(assetUrl(file)):null;if(this.track){this.track.loop=true;this.track.volume=this.volume;this.track.preload='none';this.track.addEventListener('error',()=>{this.error='Unable to load music. Please reload the page.';});}}
   async start(){this.context??=new AudioContext();await Promise.all([this.context.resume(),this.track?.play()]);for(const key of Object.keys(this.sounds))if(!['rain','rain_above','thunder'].includes(key))void this.load(key).catch(cause=>{this.error=String(cause);});}
   private load(key:string){
-    if(!this.buffers.has(key))this.buffers.set(key,Promise.all((this.sounds[key]??[]).map(async file=>{const response=await fetch(assetUrl(file));if(!response.ok)throw new Error(`効果音を読み込めません: ${key}`);return this.context!.decodeAudioData(await response.arrayBuffer());})));
+    if(!this.buffers.has(key))this.buffers.set(key,Promise.all((this.sounds[key]??[]).map(async file=>{const response=await fetch(assetUrl(file));if(!response.ok)throw new Error(`Unable to load sound effect: ${key}`);return this.context!.decodeAudioData(await response.arrayBuffer());})));
     return this.buffers.get(key)!;
   }
   effect(key:string,level=.3,pitch?:number){

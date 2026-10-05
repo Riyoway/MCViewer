@@ -18,7 +18,10 @@ export class MinecraftText {
     const width=(n:number)=>n<128?this.widths[n]??6:this.sizes[n]?((this.sizes[n]&15)-(this.sizes[n]>>4)+1)/2+1:4;
     const lines=text.split('\n'),w=Math.max(1,...lines.map(line=>[...line].reduce((sum,c)=>sum+width(c.charCodeAt(0)),0))),canvas=document.createElement('canvas');canvas.width=Math.ceil(w*2);canvas.height=lines.length*20;const ctx=canvas.getContext('2d')!;ctx.imageSmoothingEnabled=false;
     const draw=(shadow:boolean)=>{let x=shadow?2:0,y=shadow?2:0;for(const character of characters){const code=character.charCodeAt(0);if(character==='\n'){x=shadow?2:0;y+=20;continue;}if(code!==32){if(code<128)ctx.drawImage(this.ascii,(code&15)*8,(code>>4)*8,8,8,x,y,16,16);else if(this.sizes[code]){const left=this.sizes[code]>>4,right=this.sizes[code]&15,page=pages.get(code>>8)!;ctx.drawImage(page,(code&15)*16+left,(code>>4&15)*16,right-left+1,16,x,y,right-left+1,16);}}x+=width(code)*2;}};
-    draw(true);ctx.globalCompositeOperation='source-in';ctx.fillStyle='#3f3f3f';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.globalCompositeOperation='source-over';draw(false);canvas.setAttribute('aria-hidden','true');canvas.style.width=`${canvas.width/2}px`;canvas.style.height=`${canvas.height/2}px`;
-    span.replaceChildren();const accessible=document.createElement('span');accessible.className='bitmap-label';accessible.textContent=text;span.append(accessible,canvas);
+    draw(false);
+    // Mask the native glyphs with currentColor so hover/disabled text and its quarter-bright shadow match the client.
+    const glyphs=document.createElement('span');glyphs.className='bitmap-glyphs';glyphs.setAttribute('aria-hidden','true');
+    glyphs.style.maskImage=`url(${canvas.toDataURL()})`;glyphs.style.width=`${canvas.width/2}px`;glyphs.style.height=`${canvas.height/2}px`;
+    span.replaceChildren();const accessible=document.createElement('span');accessible.className='bitmap-label';accessible.textContent=text;span.append(accessible,glyphs);
   }
 }

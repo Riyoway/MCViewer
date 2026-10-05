@@ -30,10 +30,19 @@ for(const [name,data] of files){let target:string|undefined;
 }
 const widgets=files.get(prefix+'textures/gui/widgets.png')!;
 for(const [name,y] of [['disabled',46],['button',66],['hover',86]] as const)await sharp(widgets).extract({left:0,top:y,width:200,height:20}).png().toFile(`${output}/${name}.png`);
+await sharp({create:{width:150,height:20,channels:4,background:'#0000'}}).composite([
+  {input:await sharp(widgets).extract({left:0,top:46,width:75,height:20}).toBuffer(),left:0,top:0},
+  {input:await sharp(widgets).extract({left:125,top:46,width:75,height:20}).toBuffer(),left:75,top:0}
+]).png().toFile(output+'/slider-track.png');
+// GuiOptionSlider draws the first and last four pixels of the normal button.
+await sharp({create:{width:8,height:20,channels:4,background:'#0000'}}).composite([
+  {input:await sharp(widgets).extract({left:0,top:66,width:4,height:20}).toBuffer(),left:0,top:0},
+  {input:await sharp(widgets).extract({left:196,top:66,width:4,height:20}).toBuffer(),left:4,top:0}
+]).png().toFile(output+'/slider-thumb.png');
 const logo=files.get(prefix+'textures/gui/title/minecraft.png')!;
 await sharp({create:{width:274,height:44,channels:4,background:'#0000'}}).composite([
   {input:await sharp(logo).extract({left:0,top:0,width:155,height:44}).toBuffer(),left:0,top:0},
   {input:await sharp(logo).extract({left:0,top:45,width:119,height:44}).toBuffer(),left:155,top:0}
 ]).png().toFile(output+'/logo.png');
-await writeFile(output+'/SOURCE.md','Menu textures and bitmap fonts extracted from the user-provided Minecraft-1.12.2-js.html (Eaglercraft 1.12.2 Offline), embedded EPK v2 resources. Original texture pixels preserved. Extraction: npm run menu-assets -- <path-to-html>.\n');
+await writeFile(output+'/SOURCE.md','Menu textures and bitmap fonts extracted from the user-provided Minecraft-1.12.2-js.html (Eaglercraft 1.12.2 Offline), embedded EPK v2 resources. Original texture pixels preserved. Extraction: npm run menu-assets -- <path-to-html>.\nSlider track and handle use the native GuiOptionSlider 150 x 20 and 8 x 20 slices (https://github.com/WangTingZheng/mcp940/blob/master/src/minecraft/net/minecraft/client/gui/GuiOptionSlider.java).\nEnglish inventory names in item-names.json come from the official Minecraft 1.13 client en_us.json and minecraft-data for newer IDs. Regenerate with npm run ui-language.\n');
 console.log(`Extracted native menu resources from ${files.size} EPK entries.`);

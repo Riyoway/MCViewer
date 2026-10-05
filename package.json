@@ -14,6 +14,7 @@
     "assets": "tsx scripts/prepare.ts",
     "weather-assets": "tsx scripts/weather-assets.ts",
     "ui-assets": "tsx scripts/ui-assets.ts",
+    "ui-language": "tsx scripts/ui-language.ts",
     "building-assets": "tsx scripts/building-assets.ts",
     "particle-assets": "tsx scripts/particle-assets.ts",
     "fluid-assets": "tsx scripts/fluid-assets.ts",

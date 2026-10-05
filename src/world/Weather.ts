@@ -10,7 +10,7 @@ import type { UIAssets } from '../ui/types';
 export type WeatherMode='clear'|'rain'|'thunder'|'snow';
 const modes:WeatherMode[]=['clear','rain','thunder','snow'];
 async function readJSON<T>(file:string,signal?:AbortSignal):Promise<T>{
-  const response=await fetch(assetUrl(file),{signal});if(!response.ok)throw new Error(`天候データを読み込めません: ${file}`);
+  const response=await fetch(assetUrl(file),{signal});if(!response.ok)throw new Error(`Unable to load weather data: ${file}`);
   const bytes=new Uint8Array(await response.arrayBuffer());
   const body=bytes[0]===31&&bytes[1]===139?new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')):new Blob([bytes]).stream();
   return new Response(body).json();
@@ -56,7 +56,7 @@ export class Weather {
     const token=++this.selection,world=this.data.worlds[name]??this.data.worlds.tutorial;this.columns.clear();this.climate=undefined;this.rainSounds=new RainSounds();this.soundClock=0;this.soundEvents=[];this.flash=0;this.bolt.visible=false;this.thunderDelay=-1;this.thunderEvents=0;this.lightningTime=8+this.random()*12;
     this.rain.geometry.setDrawRange(0,0);this.snow.geometry.setDrawRange(0,0);
     const particleTexture=this.textures.get(`ui/${name.startsWith('tutorial')?'vanilla':name}-particles.png`)??this.textures.get('ui/vanilla-particles.png');if(particleTexture)this.splashes.select(particleTexture);else this.splashes.clear();
-    if(!world)throw new Error(`天候データがありません: ${name}`);
+    if(!world)throw new Error(`Weather data not found: ${name}`);
     for(const type of ['rain','snow'] as const){this[type].material.map=this.textures.get(world[type])!;this[type].material.needsUpdate=true;}
     const data=importedClimate??await readJSON<ClimateData>(world.climate,this.climateRequest.signal);if(token===this.selection)this.climate=new Climate(data);
   }

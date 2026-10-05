@@ -15,7 +15,7 @@ import type {WorldSource} from '../viewer/ImportWorld';
 interface Column {group:Group;keys:string[];surface:Float32Array;rainSurface:Int16Array;sections:Map<string,Group>;bases:{mesh:Mesh;data:PackedMesh;owners?:Int16Array;transparent:boolean}[]}
 
 async function readCompressed(file:string,signal:AbortSignal) {
-  const response=await fetch(assetUrl(file),{signal});if(!response.ok)throw new Error(`チャンクを読み込めません: ${file}`);
+  const response=await fetch(assetUrl(file),{signal});if(!response.ok)throw new Error(`Unable to load chunk: ${file}`);
   let buffer=await response.arrayBuffer();const bytes=new Uint8Array(buffer);
   if(bytes[0]===31&&bytes[1]===139)buffer=await new Response(new Blob([buffer]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
   return buffer;
@@ -30,7 +30,7 @@ export class World {
   private worker?:Worker;private job?:EditJob;private revision=0;private lightEdits=new Map<string,Vec3>();private ready:EditResult['meshes']=[];
   radius=6;error='';
   constructor(readonly assets:AssetManager,readonly name:string,private source?:WorldSource) {
-    this.data=assets.manifest.worlds[name];if(!this.data)throw new Error(`ワールドがありません: ${name}`);
+    this.data=assets.manifest.worlds[name];if(!this.data)throw new Error(`No worlds found: ${name}`);
     this.collision=new Collision(this.voxels,assets.manifest.blocks);
     this.edits=new EditStore(name);this.building=new Building(this.voxels,assets.manifest,this.data.theme??(name.startsWith('tutorial')?'vanilla':name),p=>this.validPosition(p));
     for(const block of assets.manifest.blocks)if(block){for(const tile of [...block.tiles,...block.fluidTiles??[]])this.terrainTiles.add(tile);for(const element of block.elements)for(const face of Object.values(element.faces))if(face)this.terrainTiles.add(face.tile);}
@@ -40,7 +40,7 @@ export class World {
       this.worker=new Worker(new URL('./EditWorker.ts',import.meta.url),{type:'module'});
       this.worker.postMessage({blocks:assets.manifest.blocks});
       this.worker.onmessage=event=>{if(event.data.error){this.error=event.data.error;return;}this.finishJob(event.data);};
-      this.worker.onerror=event=>{this.error=`地形を更新できません: ${event.message}`;};
+      this.worker.onerror=event=>{this.error=`Unable to update terrain: ${event.message}`;};
     }
   }
   async start(progress:(done:number,total:number)=>void) {

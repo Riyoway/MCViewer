@@ -37,7 +37,7 @@ export class AssetManager {
   refreshCutouts(){this.cutoutTiles.clear();for(const block of this.manifest.blocks)if(block&&['glass','glass_pane'].includes(block.name))for(const element of block.elements)for(const face of Object.values(element.faces))if(face)this.cutoutTiles.add(face.tile);}
   static async load() {
     const response=await fetch(assetUrl('manifest.json'));
-    if(!response.ok)throw new Error('素材が見つかりません。npm run assets を実行してください。');
+    if(!response.ok)throw new Error('Assets not found. Run npm run assets.');
     const manifest:Manifest=await response.json();
     const texture=await new TextureLoader().loadAsync(assetUrl('atlas.png'));
     texture.magFilter=NearestFilter;texture.minFilter=NearestMipmapLinearFilter;texture.generateMipmaps=true;texture.colorSpace=SRGBColorSpace;
@@ -108,7 +108,7 @@ export class AssetManager {
     for(const [i,name,size] of [[0,'position',3],[1,'normal',3],[2,'uv',2],[4,'color',3],[5,'glow',1],[6,'lightLevel',2]] as const) geometry.setAttribute(name,new BufferAttribute(attrs[i],size));
     const info=new Float32Array(attrs[3].length*3),size=new Float32Array(attrs[3].length*2);
     for(let i=0;i<attrs[3].length;i++) {
-      const tile=this.manifest.atlas.tiles[attrs[3][i]];if(!tile)throw new Error('チャンクと素材のバージョンが一致しません。npm run assets を実行してください。');info[i*3]=tile.start;info[i*3+1]=tile.frames;info[i*3+2]=tile.ticks??1;
+      const tile=this.manifest.atlas.tiles[attrs[3][i]];if(!tile)throw new Error('Chunk and asset versions do not match. Run npm run assets.');info[i*3]=tile.start;info[i*3+1]=tile.frames;info[i*3+2]=tile.ticks??1;
       size.set(tile.size??[this.manifest.atlas.pixels-1,this.manifest.atlas.pixels-1],i*2);
     }
     geometry.setAttribute('tileInfo',new Float32BufferAttribute(info,3));

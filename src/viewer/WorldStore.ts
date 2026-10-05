@@ -1,7 +1,7 @@
 import type {WorldManifest} from '../minecraft/types';
 export interface LocalFile {name:string;blob:Blob}
 export interface SavedWorld {id:string;name:string;added:number;files:LocalFile[];pack?:LocalFile;manifest?:WorldManifest;icon?:Blob;version?:string;sample?:string}
-export function safePath(name:string){const path=name.replaceAll('\\','/').replace(/^\.\//,'');if(path.startsWith('/')||/^[A-Za-z]:/.test(path)||path.split('/').includes('..'))throw new Error('不正なファイルパスです');return path;}
+export function safePath(name:string){const path=name.replaceAll('\\','/').replace(/^\.\//,'');if(path.startsWith('/')||/^[A-Za-z]:/.test(path)||path.split('/').includes('..'))throw new Error('Invalid file path');return path;}
 export class WorldStore {
   private db?:Promise<IDBDatabase>;
   private open(){return this.db??=new Promise((resolve,reject)=>{const r=indexedDB.open('minecraft-world-viewer',1);r.onupgradeneeded=()=>r.result.createObjectStore('worlds',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}

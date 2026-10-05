@@ -15,10 +15,10 @@ const manifest=JSON.parse(await readFile('public/generated/manifest.json','utf8'
 const tag=(type:string,value:any)=>({type,value:type==='byteArray'?Array.from(value as Uint8Array,n=>n>127?n-256:n):value}),compound=(value:any)=>tag('compound',value),list=(type:string,value:any[])=>tag('list',{type,value});
 const nbt=(value:any)=>new Uint8Array(writeUncompressed({name:'',type:'compound',value} as any));
 const level=nbt({Data:compound({LevelName:tag('string','Fixture'),SpawnX:tag('int',8),SpawnY:tag('int',0),SpawnZ:tag('int',8),DataVersion:tag('int',3465),Version:compound({Name:tag('string','1.20.1')})})});
-assert.equal(readNbt(gzipSync(level)).Data.LevelName,'Fixture');assert.throws(()=>readNbt(level.subarray(0,15)),/途中/);
+assert.equal(readNbt(gzipSync(level)).Data.LevelName,'Fixture');assert.throws(()=>readNbt(level.subarray(0,15)),/Truncated/);
 assert.equal(safePath('World\\region/r.0.0.mca'),'World/region/r.0.0.mca');assert.throws(()=>safePath('world/../secret'));assert.throws(()=>safePath('C:/secret'));
 for(const padded of [false,true]){const values=Array.from({length:4096},(_,i)=>i%17),words:bigint[]=Array(padded?Math.ceil(4096/12):320).fill(0n);for(const [i,value] of values.entries()){const word=padded?Math.floor(i/12):Math.floor(i*5/64),shift=padded?i%12*5:i*5%64;words[word]|=BigInt(value)<<BigInt(shift);if(!padded&&shift+5>64)words[word+1]|=BigInt(value)>>BigInt(64-shift);}assert.deepEqual([...unpackStates(words,17,padded)],values);}
-assert.throws(()=>unpackStates([],2,true),/途中/);
+assert.throws(()=>unpackStates([],2,true),/Truncated/);
 function region(chunk:Uint8Array){const bytes=zlibSync(chunk),sectors=Math.ceil((bytes.length+5)/4096),output=new Uint8Array((2+sectors)*4096),view=new DataView(output.buffer);view.setUint32(0,2*256+sectors);view.setUint32(8192,bytes.length+1);output[8196]=2;output.set(bytes,8197);return output;}
 const modern=region(nbt({DataVersion:tag('int',3465),xPos:tag('int',0),zPos:tag('int',0),isLightOn:tag('byte',1),sections:list('compound',[
   {Y:tag('byte',-2),block_states:compound({palette:list('compound',[{Name:tag('string','minecraft:air')}])})},
