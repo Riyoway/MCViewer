@@ -1,7 +1,8 @@
 <main id="home-menu" data-screen>
   <div class="title-logo"><img src="/menu/logo.png" alt="Minecraft" /><h1>World Viewer</h1></div>
   <div class="home-buttons"><button id="home-worlds">Select World</button><button id="home-samples">Sample Worlds</button><div class="button-row"><button id="home-settings">Options...</button><button id="home-help">Controls</button></div></div>
-  <footer><span>Minecraft World Viewer</span><span>Java Edition</span></footer>
+  <aside class="home-notice" aria-label="Unofficial project notice"><span>Unofficial Minecraft viewer.</span><span>Not approved by or associated with</span><span>Mojang or Microsoft.</span></aside>
+  <footer><span>© Mojang AB / Microsoft</span><a href="/menu/credits.html" target="_blank" rel="noopener noreferrer">Credits & Notices</a></footer>
 </main>
 <section id="map-menu" data-screen class="world-screen" hidden>
   <h1 id="world-list-title">Select World</h1><div id="maps" class="world-list" role="listbox" aria-label="World"></div>
@@ -17,6 +18,7 @@
 <section id="loading-menu" data-screen class="loading-screen" hidden><h1 id="loading-title">Loading world</h1><p id="loading" role="status" aria-live="polite">Loading assets...</p><progress id="load-progress"></progress><button id="cancel-loading">Cancel</button></section>
 <section id="pause-menu" data-screen hidden>
   <h1 class="pause-title">Minecraft World Viewer</h1><div class="pause-buttons"><button id="resume">Back to World</button><div class="button-row"><button id="pause-settings">Options...</button><button id="pause-pack">Resource Pack...</button></div><div class="button-row"><button id="respawn">Return to Spawn</button><button id="reset-map">Reset World</button></div><button id="change-map">Save and Quit to Title</button></div>
+  <footer><span>© Mojang AB / Microsoft</span><a href="/menu/credits.html" target="_blank" rel="noopener noreferrer">Credits & Notices</a></footer>
 </section>
 <section id="reset-menu" data-screen class="confirm-screen" role="dialog" aria-modal="true" aria-labelledby="reset-title" hidden>
   <h1 id="reset-title">Reset this world?</h1><p id="reset-map-name"></p><p>Restores placed and broken blocks and door states.</p><p>Your original world files will stay unchanged.</p><div class="button-row"><button id="confirm-reset">Reset</button><button id="cancel-reset">Cancel</button></div>

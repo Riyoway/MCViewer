@@ -12,6 +12,8 @@ Three.js + TypeScript + Viteで、Java版の保存済みワールドをブラウ
 
 UIの表示言語は英語です。アイテム名の英語データは`npm run ui-language`で再生成します。
 
+ホームにMinecraftの著作権と非公式表記を表示し、ホーム・ポーズメニューの「Credits & Notices」から権利者・素材の出典・コミュニティ貢献者・ライブラリのライセンスを確認できます。公開用の表記は[public/menu/credits.html](public/menu/credits.html)に収録しています。素材の権利はそれぞれの権利者に帰属し、著作権表記によって再配布の許諾が付与されるものではありません。[Minecraft Usage Guidelines](https://www.minecraft.net/en-us/usage-guidelines)
+
 メニュー素材の再抽出は`npm run menu-assets -- <HTMLのパス>`。ワールド読み込み用の旧ID・バイオーム表と、アトラスの元テクスチャ名は`npm run viewer-data`で再生成します。元のブロック番号・アトラスの画素は変えません。
 
 ## 起動

@@ -1,4 +1,5 @@
 :root{--menu-scale:2}body{font-family:monospace;background:#000}
+.home-notice{position:absolute;bottom:22px;left:5px;right:5px;text-align:center;color:#ddd;line-height:10px}.home-notice>span{display:block}#menus footer a{color:#fff;text-decoration:none}#menus footer a:hover,#menus footer a:focus-visible{color:#ffffa0;text-decoration:underline}
 #world{filter:none}.panorama-menu #world{filter:blur(1px)}
 #panorama-shade{position:fixed;inset:0;pointer-events:none;background:linear-gradient(#ffffff20,#00000080)}body:not(.panorama-menu) #panorama-shade{display:none}
 #menus{width:calc(100% / var(--menu-scale));height:calc(100% / var(--menu-scale));transform:scale(var(--menu-scale));transform-origin:top left;display:block;padding:0;overflow:hidden;background:transparent;font-size:8px;line-height:10px;text-shadow:1px 1px #3f3f3f}
