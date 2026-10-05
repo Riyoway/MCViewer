@@ -22,6 +22,24 @@ VercelにはJavaScript・CSS・メニュー画像・フォント・ローカル�
 
 ローカルの`npm run dev`と外部URLを設定しない`npm run build`は、従来どおり手元の素材を使う。`npm run hosting:report`で素材の容量・ファイル数・バージョンを確認できる。
 
+## Minecraft専用の配信先
+
+専用バケットは`minecraft-world-viewer-assets`、公開ドメインは`assets.mineconsole.riyo.me`。既存のPrivate-arcadeのバケット・素材・プロジェクト設定には変更を加えていない。
+
+VercelのProductionとPreviewには、次の環境変数を設定する。
+
+```text
+VITE_ASSET_BASE_URL=https://assets.mineconsole.riyo.me/generated/50dcf0c41c4a33f4e6224e15cb8b3c96e01c0a44
+```
+
+このURLは現在の生成素材のcommitを指す。アプリだけの更新では同じURLを使い、生成素材を変更したときだけ新しいバージョンへ切り替える。バケットは分離しているが、R2の無料枠と課金はCloudflareアカウント全体で共有される。
+
+2026-10-05に81,855ファイル・2,536,740,005バイトの初回公開を完了。全オブジェクトの件数・容量を照合し、全14サンプルの開始地点を含む33ファイルのSHA-256とCORSを検証した。専用の一時Workerで転送し、完了後にそのWorkerを削除している。実ブラウザではTU1・TU46・Halloween・Marioの各開始地点9チャンクを読み込み、通信エラーとJavaScriptエラーがないことを確認した。`npm test`と実CDNを参照する`npm run build:vercel`は成功し、出力は250ファイル・6.11 MiB。公開記録は[deployment/asset-release.json](../deployment/asset-release.json)に保存している。
+
+Vercelの環境変数設定・保存容量の整理・プロジェクト再開は、この素材公開とは別の作業。上の検証はローカルの公開用ビルドで行っており、VercelのProductionデプロイ完了を示すものではない。
+
+オブジェクトには1年間の`Cache-Control: public,max-age=31536000,immutable`を設定している。PNG・OGG・GZはCloudflareの既定のキャッシュ対象で、PNGの実配信でHITを確認した。JSONはブラウザでキャッシュされるが、Edgeでもキャッシュするには別途Cache Ruleが必要。現在は専用のCache Ruleを追加していない。[既定のキャッシュ動作](https://developers.cloudflare.com/cache/concepts/default-cache-behavior/)
+
 ## R2の初回準備
 
 1. CloudflareアカウントでR2を有効にし、専用の**Standard**バケットを作る。生成素材専用にし、原本ZIPやユーザーのワールドを混ぜない。
