@@ -332,11 +332,11 @@ assert(swimmer.position[0]>.5&&swimmer.position[1]>=1,'Swimming into a bank supp
 body.position.splice(0,3,0,5,4);body.stop();for(let i=0;i<40;i++)body.tick(0,0,0,false,false,false);assert.equal(body.position[1],0,'Landing from a fall');
 collision.loaded=()=>false;const blocked=[...body.position];body.tick(1,0,0,true,true,false);assert.deepEqual(body.position,blocked,'Do not walk or fall into unloaded chunks');
 
-const inputWindow=new EventTarget(),canvas={clientWidth:1000,clientHeight:700} as HTMLCanvasElement,inputDocument=Object.assign(new EventTarget(),{pointerLockElement:canvas as HTMLCanvasElement|null,exitPointerLock(){this.pointerLockElement=null;this.dispatchEvent(new Event('pointerlockchange'));}});
+const inputWindow=new EventTarget(),canvas={clientWidth:1000,clientHeight:700} as HTMLCanvasElement,inputDocument=Object.assign(new EventTarget(),{pointerLockElement:null as HTMLCanvasElement|null,exitPointerLock(){this.pointerLockElement=null;this.dispatchEvent(new Event('pointerlockchange'));}});
 Object.assign(globalThis,{window:inputWindow,document:inputDocument});
 const inputPlayer=new Player(new PerspectiveCamera(),new PlayerModel(),collision,canvas,()=>{});
 inputPlayer.update(0);assert.equal(inputPlayer.model.hand.visible,false,'The map menu has no first-person hand');
-inputDocument.dispatchEvent(new Event('pointerlockchange'));
+inputDocument.pointerLockElement=canvas;inputDocument.dispatchEvent(new Event('pointerlockchange'));
 const mouse=(x:number,y:number)=>inputDocument.dispatchEvent(Object.assign(new Event('mousemove'),{movementX:x,movementY:y}));
 mouse(900,500);assert.equal(inputPlayer.yaw,0,'Ignore pointer-lock entry warp');mouse(10,5);const turned=inputPlayer.yaw;assert.equal(turned,-.02);mouse(1600,-1000);assert.equal(inputPlayer.yaw,turned,'Ignore discontinuous display warp');mouse(20,0);assert.equal(inputPlayer.yaw,-.06,'Normal mouse input continues after a rejected warp');
 inputPlayer.model.swing();inputPlayer.model.update(.075,0,0,0,0,0,true);assert(inputPlayer.model.hand.position.x<.64,'Interaction swing moves the arm toward the crosshair even with bobbing off');inputPlayer.model.update(.3,0,0,0,0,0,true);assert.deepEqual(inputPlayer.model.hand.position.toArray(),[.64,-.6,-.72],'The native six-tick swing returns to rest');
@@ -348,6 +348,10 @@ press('Space');assert(inputPlayer.movement.flying,'The next press after a double
 press('Space');assert.equal(inputPlayer.movement.flying,false);
 press('F5');assert.equal(inputPlayer.perspective,1);press('KeyV');assert.equal(inputPlayer.perspective,2);
 press('Escape');assert.equal(inputPlayer.locked,false);assert.equal(inputPlayer.keys.size,0);
+inputDocument.pointerLockElement=canvas;
+const prelockedPlayer=new Player(new PerspectiveCamera(),new PlayerModel(),collision,canvas,()=>{});prelockedPlayer.update(0);
+assert(prelockedPlayer.locked&&prelockedPlayer.model.hand.visible,'A world opened after the loading click inherits its existing pointer lock');
+inputDocument.exitPointerLock();assert(!prelockedPlayer.locked&&!prelockedPlayer.model.hand.visible,'Escape still releases a lock obtained before loading');
 
 const realAudio=globalThis.Audio;let musicPreload='',cancelledMusic=0;
 try{Object.assign(globalThis,{Audio:class extends EventTarget{loop=false;volume=0;preload='auto';constructor(readonly src:string){super();}pause(){}removeAttribute(){}load(){cancelledMusic++;}}});const selectingAudio=new AudioManager({one:'vanilla.ogg',two:'mario.ogg'});selectingAudio.select('one');musicPreload=(selectingAudio as any).track.preload;selectingAudio.select('two');assert.equal(musicPreload,'none','Map selection does not preload music');assert.equal(cancelledMusic,1,'Changing maps stops the previous music download');}finally{globalThis.Audio=realAudio;}
@@ -357,6 +361,11 @@ Object.assign(globalThis,{AudioContext:class{state='running';destination={};asyn
 const audioCheck=new AudioManager({});Object.assign(audioCheck,{track:music,buffers:new Map([['wood',Promise.resolve([{}])]])});
 audioCheck.setVolume(.6);await assert.rejects(audioCheck.start());assert.equal(music.volume,.6,'A playback failure must preserve the chosen BGM volume');
 rejectMusic=false;await audioCheck.start();assert.equal(music.paused,false);
+for(const name of ['AbortError','NotAllowedError']){const interrupted=new AudioManager({});Object.assign(interrupted,{track:{async play(){throw new DOMException('Interrupted playback',name);}}});await interrupted.start();assert.equal(interrupted.error,'','Expected playback cancellation/autoplay restrictions stay quiet');}
+let rejectOldMusic!:(cause:Error)=>void;
+const switchedMusic=new AudioManager({}),oldPlayback=new Promise<void>((_,reject)=>rejectOldMusic=reject);
+Object.assign(switchedMusic,{track:{play:()=>oldPlayback}});const pendingMusic=switchedMusic.start();Object.assign(switchedMusic,{track:music});rejectOldMusic(new Error('Old music request failed after switching tracks'));await pendingMusic;
+await switchedMusic.start();assert.equal(music.paused,false,'The replacement track can still play after an interrupted request');
 audioCheck.effect('wood');await Promise.resolve();assert.equal(effectStarts,1,'Audible footsteps create a sound source');
 audioCheck.setEffectVolume(0);audioCheck.effect('wood');await Promise.resolve();assert.equal(effectStarts,1,'Effects can be muted independently');
 

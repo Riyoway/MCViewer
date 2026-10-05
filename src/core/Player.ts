@@ -4,6 +4,8 @@ import { Movement } from './Movement';
 import { PlayerModel } from './PlayerModel';
 import type { Vec3 } from '../minecraft/types';
 
+export async function lockPointer(canvas:HTMLCanvasElement){try{await canvas.requestPointerLock({unadjustedMovement:true});}catch(error){if(error instanceof DOMException&&error.name==='NotSupportedError')await canvas.requestPointerLock();else throw error;}}
+
 export class Player {
   readonly keys=new Set<string>();readonly movement:Movement;readonly position;
   yaw=0;pitch=0;locked=false;perspective=0;motionEnabled=false;sensitivity=.002;fov=70;
@@ -12,7 +14,7 @@ export class Player {
   private previous:Vec3=[0,80,0];
   private ignoreMouse=true;private mouseTime=0;
   constructor(readonly camera:PerspectiveCamera,readonly model:PlayerModel,public collision:Collision,readonly canvas:HTMLCanvasElement,onLock:(locked:boolean)=>void) {
-    this.movement=new Movement(collision);this.position=this.movement.position;camera.rotation.order='YXZ';
+    this.movement=new Movement(collision);this.position=this.movement.position;this.locked=document.pointerLockElement===canvas;camera.rotation.order='YXZ';
     camera.add(model.hand);model.hand.position.set(.64,-.6,-.72);model.hand.rotation.set(0,Math.PI/4,0);
     document.addEventListener('pointerlockchange',()=>{this.locked=document.pointerLockElement===canvas;this.ignoreMouse=true;this.mouseTime=performance.now();if(!this.locked){this.stop();this.model.hand.visible=false;}onLock(this.locked);});
     document.addEventListener('mousemove',event=>{
@@ -41,7 +43,7 @@ export class Player {
     document.addEventListener('visibilitychange',()=>{if(document.hidden){this.stop();if(this.locked)document.exitPointerLock();}});
   }
   stop(){this.keys.clear();this.movement.stop();this.accumulator=0;this.sprintToggle=false;}
-  async lock(){try{await this.canvas.requestPointerLock({unadjustedMovement:true});}catch(error){if(error instanceof DOMException&&error.name==='NotSupportedError')await this.canvas.requestPointerLock();else throw error;}}
+  lock(){return lockPointer(this.canvas);}
   update(dt:number) {
     if(dt===0)this.previous=[...this.position];
     const forward=this.locked?(Number(this.keys.has('KeyW')||this.keys.has('ArrowUp'))-Number(this.keys.has('KeyS')||this.keys.has('ArrowDown'))):0;
