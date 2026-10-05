@@ -24,19 +24,23 @@ VercelにはJavaScript・CSS・メニュー画像・フォント・ローカル�
 
 ## Minecraft専用の配信先
 
-専用バケットは`minecraft-world-viewer-assets`、公開ドメインは`assets.mineconsole.riyo.me`。既存のPrivate-arcadeのバケット・素材・プロジェクト設定には変更を加えていない。
+サイトとVercelプロジェクトは`mcviewer`、サイトのドメインは`mcviewer.riyo.me`。専用バケットは`minecraft-world-viewer-assets`、公開ドメインは`assets.mcviewer.riyo.me`。既存のPrivate-arcadeのバケット・素材・プロジェクト設定には変更を加えていない。GitHubリポジトリは引き続き`Riyoway/mineconsole`。
 
 VercelのProductionとPreviewには、次の環境変数を設定する。
 
 ```text
-VITE_ASSET_BASE_URL=https://assets.mineconsole.riyo.me/generated/50dcf0c41c4a33f4e6224e15cb8b3c96e01c0a44
+VITE_ASSET_BASE_URL=https://assets.mcviewer.riyo.me/generated/50dcf0c41c4a33f4e6224e15cb8b3c96e01c0a44
 ```
 
 このURLは現在の生成素材のcommitを指す。アプリだけの更新では同じURLを使い、生成素材を変更したときだけ新しいバージョンへ切り替える。バケットは分離しているが、R2の無料枠と課金はCloudflareアカウント全体で共有される。
 
+2026-10-05にCDNを`assets.mcviewer.riyo.me`へ変更した。同じバケットの同じオブジェクトを配信するため、素材の複製・再アップロードは行わない。旧CDNの`assets.mineconsole.riyo.me`も、既に開かれたページからの取得を維持するため有効にしている。サイトのDNSはCloudflareでCNAME `mcviewer` → `cname.vercel-dns.com`（DNS only）。VercelでDNS構成の正常判定とプロジェクトの再開を確認済み。ProductionとPreviewの`VITE_ASSET_BASE_URL`も新CDNへ更新している。
+
+新CDNでも全14サンプルの開始地点を含む33ファイルの一致・CORSと公開用ビルドを再検証した。実ブラウザで14サンプルの一覧とTU46の開始地点を確認し、新CDNへの162リクエストがエラーなく完了した。旧CDNへのリクエストはなかった。
+
 2026-10-05に81,855ファイル・2,536,740,005バイトの初回公開を完了。全オブジェクトの件数・容量を照合し、全14サンプルの開始地点を含む33ファイルのSHA-256とCORSを検証した。専用の一時Workerで転送し、完了後にそのWorkerを削除している。実ブラウザではTU1・TU46・Halloween・Marioの各開始地点9チャンクを読み込み、通信エラーとJavaScriptエラーがないことを確認した。`npm test`と実CDNを参照する`npm run build:vercel`は成功し、出力は250ファイル・6.11 MiB。公開記録は[deployment/asset-release.json](../deployment/asset-release.json)に保存している。
 
-Vercelの環境変数設定・保存容量の整理・プロジェクト再開は、この素材公開とは別の作業。上の検証はローカルの公開用ビルドで行っており、VercelのProductionデプロイ完了を示すものではない。
+素材公開・環境変数設定とProductionデプロイは別の作業。CDNの検証はローカルの公開用ビルドで行っている。Productionの結果はVercelのデプロイ状態と実サイトで確認する。
 
 オブジェクトには1年間の`Cache-Control: public,max-age=31536000,immutable`を設定している。PNG・OGG・GZはCloudflareの既定のキャッシュ対象で、PNGの実配信でHITを確認した。JSONはブラウザでキャッシュされるが、Edgeでもキャッシュするには別途Cache Ruleが必要。現在は専用のCache Ruleを追加していない。[既定のキャッシュ動作](https://developers.cloudflare.com/cache/concepts/default-cache-behavior/)
 
@@ -77,9 +81,9 @@ npm run build:vercel
 
 ## 既存の容量超過を解消する
 
-小さい出力へ変更しても、既に保存されたVercelデプロイは消えない。現在のプロジェクトには停止状態が設定されているため、素材の移行と保存容量の確認後に再開・再デプロイする必要がある。
+小さい出力へ変更しても、既に保存されたVercelデプロイは消えない。容量超過で停止した場合は、素材の移行と保存容量の確認後に再開・再デプロイする必要がある。2026-10-05のドメイン変更時にはプロジェクトの再開を確認済み。
 
-VercelでチームのUsage → Deployment Storage → Projectsを開き、どのプロジェクトが消費しているかを確認する。mineconsoleの現行Productionを保持し、不要な旧デプロイだけを確認して削除する。削除するとそのURLとロールバック先が失われる。2026-09-16以降のHobbyは直近3件のProductionと直近3件の全デプロイ、現行Production、Aliasや有効なブランチなどを保護するため、保持日数を短くするだけでは全容量は空かない。他のプロジェクトを一括削除しない。
+VercelでチームのUsage → Deployment Storage → Projectsを開き、どのプロジェクトが消費しているかを確認する。mcviewerの現行Productionを保持し、不要な旧デプロイだけを確認して削除する。削除するとそのURLとロールバック先が失われる。2026-09-16以降のHobbyは直近3件のProductionと直近3件の全デプロイ、現行Production、Aliasや有効なブランチなどを保護するため、保持日数を短くするだけでは全容量は空かない。他のプロジェクトを一括削除しない。
 
 現行Vercel設定の保持日数は各状態1日。追加で短縮する必要はない。コードから旧デプロイを自動削除する処理は設けていない。
 

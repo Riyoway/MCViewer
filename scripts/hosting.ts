@@ -77,7 +77,7 @@ async function main() {
     return;
   }
   if (action === 'verify') {
-    await verifyCdn(externalAssetUrl(env.VITE_ASSET_BASE_URL, true)!, env.ASSET_CHECK_ORIGIN || 'https://mineconsole.riyo.me');
+    await verifyCdn(externalAssetUrl(env.VITE_ASSET_BASE_URL, true)!, env.ASSET_CHECK_ORIGIN || 'https://mcviewer.riyo.me');
     return;
   }
   const version = assetVersion(), size = await inventory(resolve('public/generated'));
@@ -92,7 +92,7 @@ async function main() {
     throw new Error('Set R2_ACCOUNT_ID (32 hex characters) and R2_BUCKET in .env.local.');
   if (!publicUrl) throw new Error('Set R2_PUBLIC_URL to the public HTTPS bucket domain in .env.local.');
   const base = externalAssetUrl(`${publicUrl?.replace(/\/$/, '')}/generated/${version}`, true)!;
-  const origin = env.ASSET_CHECK_ORIGIN || 'https://mineconsole.riyo.me', dryRun = process.argv.includes('--dry-run');
+  const origin = env.ASSET_CHECK_ORIGIN || 'https://mcviewer.riyo.me', dryRun = process.argv.includes('--dry-run');
   if (!dryRun) {
     const existing = await fetch(`${base}/manifest.json`, { method: 'HEAD', signal: AbortSignal.timeout(30000) });
     if (existing.ok) { await verifyCdn(base, origin); console.log(`Already published. VITE_ASSET_BASE_URL=${base}`); return; }

@@ -128,9 +128,9 @@ Escのゲームメニューから「マップをリセット」を選ぶと、�
 
 ## Vercel
 
-`Riyoway/mineconsole`の`main`はVercelの`mineconsole`プロジェクトに接続済みです。`vercel.json`でVite・`npm ci`・`npm run build:vercel`・`dist`を指定しています。公開先は [mineconsole.riyo.me](https://mineconsole.riyo.me/) です。現在のプロジェクトは停止中で、素材の移行・容量確認後に再開する必要があります。
+`Riyoway/mineconsole`の`main`はVercelの`mcviewer`プロジェクトに接続済みです。`vercel.json`でVite・`npm ci`・`npm run build:vercel`・`dist`を指定しています。公開先は [mcviewer.riyo.me](https://mcviewer.riyo.me/) です。2026-10-05に新ドメインへの変更とプロジェクトの再開を確認しました。
 
-Vercelにはアプリ本体とメニューを配置し、約2.5GBの`public/generated/`はMinecraft専用のR2バケットから`assets.mineconsole.riyo.me`経由で直接配信します。Private-arcadeの既存バケット・素材・設定には変更を加えません。`VITE_ASSET_BASE_URL`は素材のcommit SHAを含む固定URLにします。VercelビルドはCDNの内容とCORSを検証し、URL未設定・素材の欠落や不一致・100MiBを超えるアプリ出力を止めます。素材はprivate repoに保持し、Vercel側で再変換・コピーしません。ローカルの通常ビルドは従来どおり素材を同梱できます。実際の設定値は[配信先](docs/hosting.md#minecraft専用の配信先)を参照してください。
+Vercelにはアプリ本体とメニューを配置し、約2.5GBの`public/generated/`はMinecraft専用のR2バケットから`assets.mcviewer.riyo.me`経由で直接配信します。Private-arcadeの既存バケット・素材・設定には変更を加えません。`VITE_ASSET_BASE_URL`は素材のcommit SHAを含む固定URLにします。VercelビルドはCDNの内容とCORSを検証し、URL未設定・素材の欠落や不一致・100MiBを超えるアプリ出力を止めます。素材はprivate repoに保持し、Vercel側で再変換・コピーしません。ローカルの通常ビルドは従来どおり素材を同梱できます。実際の設定値は[配信先](docs/hosting.md#minecraft専用の配信先)を参照してください。
 
 マップ選択中は開始地点の9列だけを取得し、プレイ中に設定した描画距離まで読み込みます。BGMは再生操作まで先読みしません。マップ変更時に不要になった地形の通信を中断し、読み込みエラー後は連続した再取得を止めます。
 
