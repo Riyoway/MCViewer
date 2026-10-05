@@ -5,6 +5,7 @@ test-results/
 .playwright-mcp/
 .vercel/
 .env*
+!.env.example
 minecraft-memory-assets/*
 !minecraft-memory-assets/resourcepacks/
 !minecraft-memory-assets/references/

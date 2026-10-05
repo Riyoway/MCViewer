@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
+    "build:vercel": "tsc --noEmit && tsx scripts/hosting.ts verify --vercel && vite build --mode vercel",
+    "hosting:report": "tsx scripts/hosting.ts report",
+    "assets:publish": "tsx scripts/hosting.ts publish",
+    "assets:verify": "tsx scripts/hosting.ts verify",
     "preview": "vite preview --host 127.0.0.1",
     "assets": "tsx scripts/prepare.ts",
     "weather-assets": "tsx scripts/weather-assets.ts",
@@ -15,12 +19,13 @@
     "fluid-assets": "tsx scripts/fluid-assets.ts",
     "menu-assets": "tsx scripts/viewer-menu-assets.ts",
     "viewer-data": "tsx scripts/viewer-data.ts",
-    "test": "tsx tests/check.ts && tsx tests/building.ts && tsx tests/viewer.ts"
+    "test": "tsx tests/check.ts && tsx tests/building.ts && tsx tests/viewer.ts && tsc --project tsconfig.hosting.json && tsx tests/hosting.ts"
   },
   "dependencies": {
     "three": "^0.180.0"
   },
   "devDependencies": {
+    "@types/node": "^22.20.5",
     "@types/three": "^0.180.0",
     "fflate": "^0.8.2",
     "minecraft-data": "^3.100.0",

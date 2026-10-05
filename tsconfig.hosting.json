@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": ["node"] },
+  "include": ["scripts/hosting.ts", "tests/hosting.ts", "vite.config.ts"]
+}
