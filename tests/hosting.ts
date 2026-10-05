@@ -23,13 +23,16 @@ try {
     files[file] = text.encode(file === 'manifest.json' ? JSON.stringify(manifest) : file);
     const path = join(directory, file); await mkdir(join(path, '..'), { recursive: true }); await writeFile(path, files[file]);
   }
-  let failure: 'cors' | 'missing' | 'content' | 'encoding' | undefined;
+  let failure: 'cors' | 'missing' | 'content' | 'encoding' | 'blocked' | undefined;
   const requested: string[] = [];
   globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
     assert.equal((init?.headers as Record<string, string>).Origin, 'https://viewer.example.com');
     const path = String(url).slice(base.length + 1); requested.push(path);
     const headers: Record<string, string> = { 'Access-Control-Allow-Origin': failure === 'cors' ? 'https://other.example.com' : '*' };
     if (failure === 'encoding' && path.endsWith('.gz')) headers['Content-Encoding'] = 'gzip';
+    if (failure === 'blocked') {
+      return new Response('<title>Attention Required! | Cloudflare</title>', { status: 403, headers: { 'cf-mitigated': 'challenge', 'cf-ray': 'fixture-ray', server: 'cloudflare' } });
+    }
     return new Response(failure === 'content' ? 'HTML error page' : files[path] as BodyInit, { status: failure === 'missing' ? 404 : 200, headers });
   }) as typeof fetch;
   await verifyCdn(base, 'https://viewer.example.com', directory);
@@ -37,6 +40,11 @@ try {
   for (const [kind, message] of [['cors', /CORS/], ['missing', /HTTP 404/], ['content', /differ/], ['encoding', /Content-Encoding/]] as const) {
     failure = kind; await assert.rejects(verifyCdn(base, 'https://viewer.example.com', directory), message);
   }
+  failure = 'blocked';
+  await assert.rejects(verifyCdn(base, 'https://viewer.example.com', directory), error => {
+    const message = (error as Error).message;
+    return message.includes(`${base}/manifest.json`) && message.includes('HTTP 403') && message.includes('cf-mitigated=challenge') && message.includes('fixture-ray') && message.includes('Cloudflare');
+  });
   assert.equal((await inventory(directory)).files, 7);
   const app = join(directory, 'app'); await mkdir(join(app, 'menu'), { recursive: true });
   for (const file of ['index.html', 'menu/logo.png', 'menu/viewer-data.json', 'menu/native-models.json', 'favicon.svg']) await writeFile(join(app, file), 'fixture');

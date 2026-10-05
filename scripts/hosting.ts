@@ -55,7 +55,15 @@ export async function verifyCdn(base: string, origin: string, root = resolve('pu
   }
   for (const file of paths) {
     const response = await fetch(`${base}/${file}`, { headers: { Origin: origin }, signal: AbortSignal.timeout(60000) });
-    if (!response.ok) { await response.body?.cancel(); throw new Error(`CDN is missing ${file} (HTTP ${response.status}).`); }
+    if (!response.ok) {
+      const details = ['server', 'cf-mitigated', 'cf-ray'].map(name => {
+        const value = response.headers.get(name); return value ? `${name}=${value}` : '';
+      }).filter(Boolean);
+      const body = await response.text();
+      const reason = body.match(/<title>([^<]{1,200})<\/title>/i)?.[1] || body.match(/<Code>([^<]{1,200})<\/Code>/i)?.[1];
+      if (reason) details.push(reason);
+      throw new Error(`CDN request failed: ${base}/${file} (HTTP ${response.status}${details.length ? '; ' + details.join('; ') : ''}).${response.status === 403 ? ' Check public bucket access and security rules for this CDN hostname.' : ''}`);
+    }
     const cors = response.headers.get('access-control-allow-origin');
     if (cors !== '*' && cors !== origin) { await response.body?.cancel(); throw new Error(`CDN CORS does not allow ${origin}: ${file}`); }
     if (/\.gz$/.test(file) && response.headers.get('content-encoding')) { await response.body?.cancel(); throw new Error(`Do not set Content-Encoding on the already-compressed chunk file: ${file}`); }
