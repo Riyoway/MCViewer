@@ -8,7 +8,7 @@ import type { Block, Element, Tile, Vec3 } from '../src/minecraft/types.ts';
 import { stateKey } from './anvil.ts';
 import type { State } from './anvil.ts';
 
-const reference='minecraft-memory-assets/references/native-data';
+const reference='asset-sources/references/native-data';
 const models=JSON.parse(await readFile(`${reference}/1.21.6/blocks_models.json`,'utf8'));
 const states=JSON.parse(await readFile(`${reference}/1.21.6/blocks_states.json`,'utf8'));
 const nativeData=minecraftData('1.21.6'),blockData=nativeData.blocksByName;
@@ -60,7 +60,7 @@ export class Packs {
 
   async init(theme: string) {
     if (this.roots[theme]) return;
-    const root=`minecraft-memory-assets/resourcepacks/${theme}`;
+    const root=`asset-sources/resourcepacks/${theme}`;
     this.roots[theme]=theme==='vanilla'?[]:[root];
     if(theme!=='vanilla') {
       const meta=JSON.parse(await readFile(`${root}/pack.mcmeta`,'utf8'));

@@ -23,8 +23,8 @@ export async function prepareWeather(){
   const assets:WeatherAssets={worlds:{},sounds:{}};
   for(const [name,world] of Object.entries(manifest.worlds)){
     const tutorial=name.startsWith('tutorial'),pack=tutorial?'vanilla':name;
-    for(const type of ['rain','snow']){const target=`weather/${pack}-${type}.png`;try{await copyFile(`minecraft-memory-assets/resourcepacks/${pack}/assets/minecraft/textures/environment/${type}.png`,`public/generated/${target}`);}catch{await copyFile(`minecraft-memory-assets/references/native-data/1.13/environment/${type}.png`,`public/generated/${target}`);}}
-    const files=unzipSync(await readFile(`minecraft-memory-assets/worlds/archives/${name}.zip`)),climate:ClimateData={biomes:[],columns:{}},ids=new Map<string,number>();
+    for(const type of ['rain','snow']){const target=`weather/${pack}-${type}.png`;try{await copyFile(`asset-sources/resourcepacks/${pack}/assets/minecraft/textures/environment/${type}.png`,`public/generated/${target}`);}catch{await copyFile(`asset-sources/references/native-data/1.13/environment/${type}.png`,`public/generated/${target}`);}}
+    const files=unzipSync(await readFile(`asset-sources/worlds/archives/${name}.zip`)),climate:ClimateData={biomes:[],columns:{}},ids=new Map<string,number>();
     const id=(value:string|number)=>{
       const b=typeof value==='number'?legacy.biomes[value]:modern.biomesByName[value.replace('minecraft:','')];
       if(!b)throw new Error(`Unknown saved biome ${value} in ${name}`);

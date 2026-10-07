@@ -7,6 +7,7 @@ test-results/
 .env*
 !.env.example
 # Optional local asset-generation inputs and outputs. Runtime uses R2.
-minecraft-memory-assets/
+asset-sources/
+/*-assets/
 public/generated/
 *.bundle

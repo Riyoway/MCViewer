@@ -46,7 +46,7 @@ Vercel builds also verify the published CDN release against pinned SHA-256 hashe
 
 The default immutable CDN release is recorded in [deployment/asset-release.json](deployment/asset-release.json). Optional overrides are documented in [.env.example](.env.example). Blank overrides use the recorded release.
 
-Changing source code does not change the asset version. Asset generation inputs (`minecraft-memory-assets/`) and outputs (`public/generated/`) are local, ignored workspaces, not repository content.
+Changing source code does not change the asset version. Asset generation inputs (`asset-sources/`) and outputs (`public/generated/`) are local, ignored workspaces, not repository content.
 
 ## Project structure
 

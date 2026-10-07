@@ -3,7 +3,6 @@
   "bucket": "minecraft-world-viewer-assets",
   "baseUrl": "https://assets.mcviewer.riyo.me/generated/50dcf0c41c4a33f4e6224e15cb8b3c96e01c0a44",
   "challengeVerificationUrl": "https://pub-05a87b24ae2541febc212d4112922429.r2.dev/generated/50dcf0c41c4a33f4e6224e15cb8b3c96e01c0a44",
-  "previousBaseUrls": ["https://assets.mineconsole.riyo.me/generated/50dcf0c41c4a33f4e6224e15cb8b3c96e01c0a44"],
   "files": 81855,
   "bytes": 2536740005,
   "verifiedAt": "2026-10-05T02:25:24Z",
@@ -11,7 +10,9 @@
     "remoteInventoryCountAndBytesMatch": true,
     "contentHashFiles": 33,
     "sampleWorlds": 14,
-    "browserWorlds": ["tutorial46"],
+    "browserWorlds": [
+      "tutorial46"
+    ],
     "vercelOutputFiles": 250,
     "vercelOutputMiB": 6.11
   },

@@ -219,6 +219,6 @@ async function init() {
     if(debug&&player&&world)$('debug').textContent=`${fps} FPS\nXYZ ${player.position.map(n=>n.toFixed(1)).join(' / ')}\n${world.data.name}\n${t(player.movement.flying?'Flying':player.movement.swimming?'Swimming':'Walking')}`;
   });
   await refreshList();menu('home-menu');$('menus').inert=false;$('menus').removeAttribute('aria-busy');
-  if(new URLSearchParams(location.search).has('debug'))Object.defineProperty(window,'memorySpace',{configurable:true,get:()=>({player,world,renderer,scene,camera,assets,sky,audio,weather,hud,config,controls,held,outline,debris,store,resourcePack,records})});
+  if(new URLSearchParams(location.search).has('debug'))Object.defineProperty(window,'mcViewer',{configurable:true,get:()=>({player,world,renderer,scene,camera,assets,sky,audio,weather,hud,config,controls,held,outline,debris,store,resourcePack,records})});
 }
 void init().catch(report);

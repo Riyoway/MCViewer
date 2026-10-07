@@ -11,7 +11,7 @@ export default defineConfig(({mode,command})=>{
     publicDir:command==='serve'?'public':false,
     define:{'import.meta.env.VITE_ASSET_BASE_URL':JSON.stringify(external)},
     optimizeDeps:{entries:['index.html']},
-    server:{watch:{ignored:['**/minecraft-memory-assets/**','**/.cache/**','**/public/generated/**']}},
+    server:{watch:{ignored:['**/asset-sources/**','**/.cache/**','**/public/generated/**']}},
     plugins:[{
       name:'viewer-menu-assets',
       async writeBundle(options){

@@ -42,7 +42,7 @@ for(const [theme,ui] of Object.entries(uiAssets.themes)){
   const sword=ui.items.find(item=>item.id==='diamond_sword')!;assert(Number.isInteger(sword.icon),'Tools use their actual item sprite');
   const fence=ui.items.find(item=>item.id==='oak_fence')!;assert(fence.model!.elements.length>1,'The GUI uses the native fence inventory model, including its two posts and rails');
   const sapling=ui.items.find(item=>item.id==='oak_sapling')!;assert(Number.isInteger(sapling.icon),'Generated plant items use a flat sprite instead of a rotated world cross');
-  if(theme==='vanilla')assert.deepEqual(await sharp(`public/generated/${ui.hotbar}`).raw().toBuffer(),await sharp('minecraft-memory-assets/references/native-data/1.13/gui/widgets.png').extract({left:0,top:0,width:182,height:22}).raw().toBuffer());
+  if(theme==='vanilla')assert.deepEqual(await sharp(`public/generated/${ui.hotbar}`).raw().toBuffer(),await sharp('asset-sources/references/native-data/1.13/gui/widgets.png').extract({left:0,top:0,width:182,height:22}).raw().toBuffer());
 }
 const inventory=new Inventory(),catalog=uiAssets.themes.vanilla.items;
 inventory.load(['diamond_sword','missing-item'],catalog);assert.deepEqual(inventory.hotbar.slice(0,2),['diamond_sword',null],'Saved items are checked against the selected pack');
@@ -55,9 +55,9 @@ for(const tile of [...manifest.atlas.tiles].sort((a,b)=>a.start-b.start)){
   assert(tile.start>=atlasEnd,'Animated sprites never overlap other atlas ranges');atlasEnd=tile.start+tile.frames;
 }
 assert.equal(manifest.missingTextures.length,0);
-const tutorials=JSON.parse(await readFile('minecraft-memory-assets/worlds/templates/tutorial/world_templates.json','utf8')) as {templateLocation:string;downloadURI:string}[];
+const tutorials=JSON.parse(await readFile('asset-sources/worlds/templates/tutorial/world_templates.json','utf8')) as {templateLocation:string;downloadURI:string}[];
 assert.equal(Object.keys(manifest.worlds).length,tutorials.length+4,'Every supplied tutorial and all four Mash-ups must be playable');
-for(const entry of tutorials){const name=entry.templateLocation.split('/').pop()!.replace('.zip',''),id=name==='tutorial14'?'tutorial':name,world=manifest.worlds[id];assert(world,`Missing ${name}`);assert.equal(world.source,entry.downloadURI);assert.equal(world.checksum.replace(/^0+/,''),new URL(entry.downloadURI).searchParams.get('checksum'));assert.equal(createHash('md5').update(await readFile(`minecraft-memory-assets/worlds/archives/${id}.zip`)).digest('hex'),world.checksum,'Original tutorial ZIP is included and verified');assert.equal(manifest.audio[id],'vanilla.ogg');await sharp(`public/generated/${id}-icon.png`).metadata();}
+for(const entry of tutorials){const name=entry.templateLocation.split('/').pop()!.replace('.zip',''),id=name==='tutorial14'?'tutorial':name,world=manifest.worlds[id];assert(world,`Missing ${name}`);assert.equal(world.source,entry.downloadURI);assert.equal(world.checksum.replace(/^0+/,''),new URL(entry.downloadURI).searchParams.get('checksum'));assert.equal(createHash('md5').update(await readFile(`asset-sources/worlds/archives/${id}.zip`)).digest('hex'),world.checksum,'Original tutorial ZIP is included and verified');assert.equal(manifest.audio[id],'vanilla.ogg');await sharp(`public/generated/${id}-icon.png`).metadata();}
 for(const key of ['wood','stone','grass','gravel','snow','sand','cloth','swim','door_open','door_close','dig_wood','dig_stone','dig_grass','dig_gravel','dig_snow','dig_sand','dig_cloth','dig_glass'])assert(manifest.effects[key]?.length,`Native effect missing: ${key}`);
 for(const block of manifest.blocks) {
   if(block?.fluid){assert.equal(block.cube,false,'Generated liquids use the surface mesher');assert(Number.isInteger(block.fluidLevel)&&block.fluidLevel!>=0&&block.fluidLevel!<=15);assert(block.fluidTiles&&block.fluidTiles.length>=2,'Generated liquids include both Still and Flow');for(const tile of block.fluidTiles)assert(manifest.atlas.tiles[tile]);}
@@ -194,7 +194,7 @@ for(const type of ['single','left','right'])for(const facing of ['north','east',
   if(type==='single') {
     const face=chest.elements[0].faces.south!,tile=packs.tiles[face.tile];assert.deepEqual(tile.size,[28,30]);
     const image=await sharp(packs.images[tile.start]).extract({left:18,top:17,width:28,height:30}).raw().toBuffer();
-    const skin=await sharp('minecraft-memory-assets/references/native-data/1.21.6/entity/chest/normal.png').ensureAlpha().extract({left:42,top:33,width:14,height:10}).resize(28,30,{kernel:'nearest'}).raw().toBuffer();assert(image.equals(skin),'Every chest texel has the same integer footprint');
+    const skin=await sharp('asset-sources/references/native-data/1.21.6/entity/chest/normal.png').ensureAlpha().extract({left:42,top:33,width:14,height:10}).resize(28,30,{kernel:'nearest'}).raw().toBuffer();assert(image.equals(skin),'Every chest texel has the same integer footprint');
   }else assert.equal(chest.elements[0].to[0]-chest.elements[0].from[0],15/16,'Double-chest halves meet without a gap');
 }
 const arm=skinBox(4,12,4,40,16,new MeshBasicMaterial(),64,64),armUv=arm.geometry.attributes.uv;
@@ -245,11 +245,11 @@ for(const [facing,direction] of Object.entries({north:[0,0,-1],east:[1,0,0],sout
   const legs=bed.collision.slice(1),legEdge=direction.reduce((sum,n,axis)=>sum+n*(legs.reduce((s,b)=>s+(b.from[axis]+b.to[axis])/4,0)-.5),0);
   assert(Math.abs(legEdge-(part==='head'?1:-1)*.40625)<1e-6,'Bed legs stay at the two outer ends');
   const tile=bed.elements[0].faces.north!.tile,actual=await sharp(packs.images[packs.tiles[tile].start]).extract({left:16,top:16,width:32,height:32}).raw().toBuffer();
-  const expected=await sharp('minecraft-memory-assets/references/native-data/1.13/entity/bed/red.png').ensureAlpha().extract({left:6,top:part==='head'?6:28,width:16,height:16}).resize(32,32,{kernel:'nearest'}).raw().toBuffer();
+  const expected=await sharp('asset-sources/references/native-data/1.13/entity/bed/red.png').ensureAlpha().extract({left:6,top:part==='head'?6:28,width:16,height:16}).resize(32,32,{kernel:'nearest'}).raw().toBuffer();
   assert(actual.equals(expected),'Keep the exact pillow/blanket pixels rather than downsampling the whole bed skin');
   for(const [i,leg] of bed.elements.slice(1).entries()){
     const image=await sharp(packs.images[packs.tiles[leg.faces.north!.tile].start]).extract({left:16,top:16,width:32,height:32}).raw().toBuffer();
-    const skin=await sharp('minecraft-memory-assets/references/native-data/1.13/entity/bed/red.png').ensureAlpha().extract({left:53,top:3+i*6,width:3,height:3}).resize(32,32,{kernel:'nearest'}).raw().toBuffer();
+    const skin=await sharp('asset-sources/references/native-data/1.13/entity/bed/red.png').ensureAlpha().extract({left:53,top:3+i*6,width:3,height:3}).resize(32,32,{kernel:'nearest'}).raw().toBuffer();
     assert(image.equals(skin),'Legs use the bed skin at u=50 rather than transparent mattress padding');
   }
 }

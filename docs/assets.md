@@ -6,10 +6,10 @@ Normal development and deployment use the existing immutable R2 release. The ori
 
 Asset maintainers can supply these local directories from a separately maintained private workspace:
 
-- `minecraft-memory-assets/resourcepacks/`: source resource packs for each theme.
-- `minecraft-memory-assets/references/native-data/`: native models, block states, textures and references.
-- `minecraft-memory-assets/worlds/templates/`: original tutorial and Mash-up template metadata.
-- `minecraft-memory-assets/worlds/archives/`: original source world ZIPs.
+- `asset-sources/resourcepacks/`: source resource packs for each theme.
+- `asset-sources/references/native-data/`: native models, block states, textures and references.
+- `asset-sources/worlds/templates/`: original tutorial and Mash-up template metadata.
+- `asset-sources/worlds/archives/`: original source world ZIPs.
 - `public/generated/`: converted manifests, atlases, chunks, UI and audio.
 
 Both workspace roots are ignored by Git and Vercel CLI uploads. They must stay outside public Git history, including archive ZIPs. Downloading from the public CDN does not restore the original conversion inputs.

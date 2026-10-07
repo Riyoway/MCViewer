@@ -121,22 +121,22 @@ for(const theme of worldNames) {
     chunks.push({file,voxels:voxelFile,origin,quads:count});quads+=count;
     if(++done%256===0)console.log(`  ${materialsOnly?'Verified':'Meshed'} ${done}/${columns.size} columns`);
   }
-  let colors:any={};if(!tutorial)try{colors=JSON.parse(await readFile(`minecraft-memory-assets/resourcepacks/${pack}/assets/legacy/biome_overrides.json`,'utf8')).overrides?.default??{};}catch{/* pack has no overrides */}
+  let colors:any={};if(!tutorial)try{colors=JSON.parse(await readFile(`asset-sources/resourcepacks/${pack}/assets/legacy/biome_overrides.json`,'utf8')).overrides?.default??{};}catch{/* pack has no overrides */}
   const environment:NonNullable<WorldManifest['environment']>={sky_color:colors.sky_color,fog_color:colors.fog_color,water_fog_color:colors.water_fog_color,water_fog_distance:colors.water_fog_distance,sun:`${theme}-sun.png`,moon:`${theme}-moon.png`,clouds:`${theme}-clouds.png`};
   for(const [from,to] of [['sun','sun'],['moon_phases','moon'],['clouds','clouds']]){
-    const vanilla=`minecraft-memory-assets/references/native-data/1.13/environment/${from}.png`,native=`minecraft-memory-assets/resourcepacks/${pack}/assets/minecraft/textures/environment/${from}.png`;
+    const vanilla=`asset-sources/references/native-data/1.13/environment/${from}.png`,native=`asset-sources/resourcepacks/${pack}/assets/minecraft/textures/environment/${from}.png`;
     try{await copyFile(native,`${output}/${theme}-${to}.png`);}catch{await copyFile(vanilla,`${output}/${theme}-${to}.png`);}
   }
   worlds[theme]={name:tutorial?`Tutorial World · TU${theme==='tutorial'?'14':theme.slice(8)}`:world.name.replace(' Save',''),source:world.source,checksum:world.checksum,bounds,spawn,yaw,chunks,blocks:total,quads,triangles:quads*2,paintings:paintingCount,environment,unsupported:[...packs.unsupported].filter(s=>s.startsWith(`${pack}:`))};
   console.log(`  ${total.toLocaleString()} blocks → ${quads.toLocaleString()} quads`);
 }
-await copyFile('minecraft-memory-assets/references/native-data/1.13/entity/steve.png',`${output}/steve.png`);
-for(const [from,to] of [['sun','sun'],['moon_phases','moon'],['clouds','clouds']])await copyFile(`minecraft-memory-assets/references/native-data/1.13/environment/${from}.png`,`${output}/${to}.png`);
-for(const [theme,icon] of Object.entries({mario:'super_mario',festive:'festive',halloween:'halloween',chinese:'chinese_mythology'}))await copyFile(`minecraft-memory-assets/worlds/templates/legacy/textures/gui/sprites/creation_list/${icon}.png`,`${output}/${theme}-icon.png`);
+await copyFile('asset-sources/references/native-data/1.13/entity/steve.png',`${output}/steve.png`);
+for(const [from,to] of [['sun','sun'],['moon_phases','moon'],['clouds','clouds']])await copyFile(`asset-sources/references/native-data/1.13/environment/${from}.png`,`${output}/${to}.png`);
+for(const [theme,icon] of Object.entries({mario:'super_mario',festive:'festive',halloween:'halloween',chinese:'chinese_mythology'}))await copyFile(`asset-sources/worlds/templates/legacy/textures/gui/sprites/creation_list/${icon}.png`,`${output}/${theme}-icon.png`);
 const tutorialIcon=(await downloadWorld('tutorial')).files['icon.png'];if(tutorialIcon)await writeFile(`${output}/tutorial-icon.png`,tutorialIcon);
 const tracks:Record<string,string>={mario:'maintheme',festive:'flake',halloween:'h1',chinese:'02_chang_an_-_perpetual_peace_overworld'};
 const audio:Manifest['audio']={};
-for(const [theme,track] of Object.entries(tracks)){await copyFile(`minecraft-memory-assets/resourcepacks/${theme}/assets/minecraft/sounds/music/${track}.ogg`,`${output}/${theme}.ogg`);audio[theme]=`${theme}.ogg`;}
+for(const [theme,track] of Object.entries(tracks)){await copyFile(`asset-sources/resourcepacks/${theme}/assets/minecraft/sounds/music/${track}.ogg`,`${output}/${theme}.ogg`);audio[theme]=`${theme}.ogg`;}
 await writeFile(`${output}/vanilla.ogg`,await downloadSound('music/game/calm1'));for(const name of tutorialWorlds)audio[name]='vanilla.ogg';
 const effects:Manifest['effects']={};await mkdir(`${output}/effects`,{recursive:true});
 for(const group of ['wood','stone','grass','gravel','snow','sand','cloth','swim','door_open','door_close']){

@@ -9,19 +9,19 @@ import type { Manifest } from '../src/minecraft/types.ts';
 import type { UIAssets,UITheme } from '../src/ui/types.ts';
 import type { Element,FaceName,Vec3 } from '../src/minecraft/types.ts';
 
-const reference='minecraft-memory-assets/references/native-data/1.13';
+const reference='asset-sources/references/native-data/1.13';
 const exists=async(path:string)=>{try{await access(path);return true;}catch{return false;}};
 export async function prepareUI(){
   const manifest:Manifest=JSON.parse(await readFile('public/generated/manifest.json','utf8')),assets:UIAssets={themes:{}};
   const native=minecraftData('1.13'),modern=minecraftData('1.21.6');
   const definitions:{name:string;texture:string|null}[]=JSON.parse(await readFile(`${reference}/items_textures.json`,'utf8'));
-  const itemModels=JSON.parse(await readFile(`${reference}/items_models.json`,'utf8')),blockModels=JSON.parse(await readFile(`${reference}/blocks_models.json`,'utf8')),modernModels=JSON.parse(await readFile('minecraft-memory-assets/references/native-data/1.21.6/blocks_models.json','utf8'));
+  const itemModels=JSON.parse(await readFile(`${reference}/items_models.json`,'utf8')),blockModels=JSON.parse(await readFile(`${reference}/blocks_models.json`,'utf8')),modernModels=JSON.parse(await readFile('asset-sources/references/native-data/1.21.6/blocks_models.json','utf8'));
   const langEntry=(await vanillaSoundIndex())['minecraft/lang/ja_jp.json'];let language:Buffer;
   try{language=await readFile('.cache/lang-ja-jp-1.13.json');}catch{language=await fetchBytes(`https://resources.download.minecraft.net/${langEntry.hash.slice(0,2)}/${langEntry.hash}`);await writeFile('.cache/lang-ja-jp-1.13.json',language);}
   if(createHash('sha1').update(language).digest('hex')!==langEntry.hash)throw new Error('Native Japanese language checksum mismatch');
   const names=JSON.parse(language.toString());await mkdir('public/generated/ui',{recursive:true});
   for(const theme of ['vanilla','mario','festive','halloween','chinese']){
-    const root=`minecraft-memory-assets/resourcepacks/${theme}`,roots=theme==='vanilla'?[]:[root];
+    const root=`asset-sources/resourcepacks/${theme}`,roots=theme==='vanilla'?[]:[root];
     if(theme!=='vanilla')for(const entry of JSON.parse(await readFile(`${root}/pack.mcmeta`,'utf8')).overlays?.entries??[])if((entry.min_format??entry.formats?.[0]??0)<=84)roots.unshift(`${root}/${entry.directory}`);
     const texture=async(path:string,fallback:string)=>{for(const r of roots){const file=`${r}/assets/minecraft/textures/${path}.png`;if(await exists(file))return sharp(file);}return sharp(`${reference}/${fallback}.png`);};
     const modelCache=new Map<string,any>();

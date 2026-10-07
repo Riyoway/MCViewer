@@ -32,6 +32,6 @@ for(const key of Object.keys(minecraftData.legacy.pc.blocks)){const [id,meta]=ke
 const native=minecraftData('1.21.6'),biomes=Object.values(native.biomesByName).map((b:any)=>({id:b.id,name:b.name,temperature:b.temperature??.8,precipitation:/desert|savanna|badlands|nether|end/.test(b.name)?'none':'rain'}));
 const oldBiomes=Object.values(minecraftData('1.12.2').biomesByName).map((b:any)=>({id:b.id,name:b.name,temperature:b.temperature??.8,precipitation:/desert|savanna|mesa|hell|sky/.test(b.name)?'none':'rain'}));
 await writeFile('public/menu/viewer-data.json',JSON.stringify({legacy,biomes,oldBiomes}));
-await writeFile('public/menu/native-models.json',await readFile('minecraft-memory-assets/references/native-data/1.21.6/blocks_models.json'));
-await writeFile('public/menu/native-states.json',await readFile('minecraft-memory-assets/references/native-data/1.21.6/blocks_states.json'));
+await writeFile('public/menu/native-models.json',await readFile('asset-sources/references/native-data/1.21.6/blocks_models.json'));
+await writeFile('public/menu/native-states.json',await readFile('asset-sources/references/native-data/1.21.6/blocks_states.json'));
 console.log(`Recovered ${manifest.atlas.tiles.filter(t=>t.key).length} texture names; ${Object.keys(legacy).length} legacy states.`);

@@ -1,4 +1,5 @@
-minecraft-memory-assets/
+asset-sources/
+/*-assets/
 public/generated/
 .cache/
 .playwright-mcp/

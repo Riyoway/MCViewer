@@ -5,7 +5,7 @@ import { unzipSync } from 'fflate';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-const tutorials=JSON.parse(await readFile('minecraft-memory-assets/worlds/templates/tutorial/world_templates.json','utf8')) as {templateLocation:string;folderName:string;downloadURI:string}[];
+const tutorials=JSON.parse(await readFile('asset-sources/worlds/templates/tutorial/world_templates.json','utf8')) as {templateLocation:string;folderName:string;downloadURI:string}[];
 export const tutorialWorlds=tutorials.map(t=>t.templateLocation.split('/').pop()!.replace('.zip','')).map(id=>id==='tutorial14'?'tutorial':id);
 export const worldNames=['tutorial','mario','festive','halloween','chinese',...tutorialWorlds.filter(id=>id!=='tutorial')];
 
@@ -48,15 +48,15 @@ if(process.argv.includes('--sound-list'))console.log(Object.keys(await vanillaSo
 export async function downloadWorld(theme:string) {
   if(!worldNames.includes(theme))throw new Error(`Unknown world: ${theme}`);
   const source = !tutorialWorlds.includes(theme)
-    ? 'minecraft-memory-assets/worlds/templates/legacy/world_templates.json'
-    : 'minecraft-memory-assets/worlds/templates/tutorial/world_templates.json';
+    ? 'asset-sources/worlds/templates/legacy/world_templates.json'
+    : 'asset-sources/worlds/templates/tutorial/world_templates.json';
   const templates = tutorialWorlds.includes(theme)?tutorials:JSON.parse(await readFile(source, 'utf8'));
   const template = ({mario:'super_mario',tutorial:'tutorial14',chinese:'chinese_mythology'} as Record<string,string>)[theme]??theme;
   const entry = templates.find((t: { templateLocation: string }) => t.templateLocation.split('/').pop()===`${template}.zip`);
   if (!entry) throw new Error(`Missing world template: ${theme}`);
   await mkdir('.cache', { recursive: true });
   const path = `.cache/${theme}.zip`;
-  const archive=`minecraft-memory-assets/worlds/archives/${theme}.zip`;let data:Buffer,archived=true;
+  const archive=`asset-sources/worlds/archives/${theme}.zip`;let data:Buffer,archived=true;
   try { data = await readFile(archive); }
   catch {
     archived=false;
