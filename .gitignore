@@ -6,12 +6,7 @@ test-results/
 .vercel/
 .env*
 !.env.example
-minecraft-memory-assets/*
-!minecraft-memory-assets/resourcepacks/
-!minecraft-memory-assets/references/
-minecraft-memory-assets/references/*
-!minecraft-memory-assets/references/native-data/
-!minecraft-memory-assets/worlds/
-minecraft-memory-assets/worlds/*
-!minecraft-memory-assets/worlds/templates/
-!minecraft-memory-assets/worlds/archives/
+# Optional local asset-generation inputs and outputs. Runtime uses R2.
+minecraft-memory-assets/
+public/generated/
+*.bundle

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, open, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { APP_BUDGET, externalAssetUrl, inventory, checkAppOutput, verifyCdn } from '../scripts/hosting.ts';
+import { APP_BUDGET, externalAssetUrl, inventory, checkAppOutput, verifyCdn, publishedAssetUrl } from '../scripts/hosting.ts';
 
 const sha = 'a'.repeat(40), base = `https://cdn.example.com/generated/${sha}`;
 assert.equal(externalAssetUrl(undefined), undefined);
@@ -35,6 +35,9 @@ try {
     }
     return new Response(failure === 'content' ? 'HTML error page' : files[path] as BodyInit, { status: failure === 'missing' ? 404 : 200, headers });
   }) as typeof fetch;
+  await assert.rejects(verifyCdn(base, 'https://viewer.example.com'), /no pinned checks/);
+  // With no local root, the pinned release still rejects an incorrect manifest.
+  await assert.rejects(verifyCdn(publishedAssetUrl, 'https://viewer.example.com'), /differ/);
   await verifyCdn(base, 'https://viewer.example.com', directory);
   assert(requested.includes('fixture/spawn.gz')); assert(!requested.includes('fixture/far.gz'));
   for (const [kind, message] of [['cors', /CORS/], ['missing', /HTTP 404/], ['content', /differ/], ['encoding', /Content-Encoding/]] as const) {

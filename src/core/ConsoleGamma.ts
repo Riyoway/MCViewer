@@ -1,6 +1,6 @@
 // Legacy4J e434f31 corrected this curve against the Console render-library decompile.
 // The Console slider is 0..100 (default 50), independent of Java lightmap brightness.
-// Reference and verification notes: README.md, Gamma section.
+// Reference and verification notes: docs/rendering.md, Gamma section.
 export function consoleGammaExponent(percentage:number){
   const value=Number.isFinite(percentage)?Math.min(100,Math.max(0,percentage)):50;
   return 1/(.5+1.5*value/100);

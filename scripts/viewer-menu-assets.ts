@@ -3,7 +3,8 @@ import {gunzipSync} from 'node:zlib';
 import sharp from 'sharp';
 
 // Extract only the menu resources; never execute the supplied offline client.
-const source=process.argv[2]??'C:/Users/Riyo/Developments/Samples/Minecraft-1.12.2-js.html';
+const source=process.argv[2];
+if(!source)throw new Error('Usage: npm run menu-assets -- <path-to-offline-client.html>');
 const html=await readFile(source,'utf8'),encoded=html.match(/assetsURI\s*=\s*"data:application\/octet-stream;base64,([A-Za-z0-9+/=]+)"/)?.[1];
 if(!encoded)throw new Error('Embedded EPK assets not found');
 const epk=Buffer.from(encoded,'base64');if(epk.toString('ascii',0,8)!=='EAGPKG$$')throw new Error('Invalid EPK');

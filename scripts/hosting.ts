@@ -1,16 +1,18 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
+import release from '../deployment/asset-release.json';
 import { pathToFileURL } from 'node:url';
 import { loadEnv } from 'vite';
 
 export const APP_BUDGET = 100 * 1024 * 1024; // Project budget, not Vercel's Git deployment limit.
-export function assetVersion() {
-  const version = execFileSync('git', ['log', '-1', '--format=%H', '--', 'public/generated'], { encoding: 'utf8' }).trim();
-  if (!/^[a-f0-9]{40}$/.test(version)) throw new Error('Generated assets must be committed before publishing.');
+export function assetVersion(value = process.env.ASSET_VERSION) {
+  const version = value || release.assetVersion;
+  if (!/^[a-f0-9]{40}$/.test(version)) throw new Error('ASSET_VERSION must be an immutable release ID (40 hex characters).');
   return version;
 }
+export const publishedAssetUrl = release.baseUrl;
 export function externalAssetUrl(value: string | undefined, required = false) {
   if (!value?.trim()) {
     if (required) throw new Error('Vercel builds require VITE_ASSET_BASE_URL. Publish public/generated to an external CDN first; see docs/hosting.md. Refusing to copy the multi-GB world assets into this deployment.');
@@ -42,25 +44,42 @@ export async function checkAppOutput(directory: string) {
   return size;
 }
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
-export async function verifyCdn(base: string, origin: string, root = resolve('public/generated'), challengeFallback?: string) {
+export async function verifyCdn(base: string, origin: string, root?: string, challengeFallback?: string) {
   if (challengeFallback) {
     challengeFallback = externalAssetUrl(challengeFallback, true)!;
     const primary = new URL(externalAssetUrl(base, true)!), fallback = new URL(challengeFallback);
     if (!/^pub-[a-f0-9]{32}\.r2\.dev$/.test(fallback.hostname) || fallback.pathname !== primary.pathname)
       throw new Error('ASSET_CHECK_BASE_URL must use an R2 development hostname and the same immutable asset path as VITE_ASSET_BASE_URL.');
   }
-  const manifestBytes = await readFile(join(root, 'manifest.json'));
-  const manifest = JSON.parse(manifestBytes.toString('utf8'));
-  // Verify every sample's spawn data, plus the startup textures/data. A 200 HTML error page must fail too.
-  const paths = new Set<string>(['manifest.json', 'atlas.png', 'steve.png', 'weather/assets.json', 'ui/assets.json']);
-  for (const world of Object.values(manifest.worlds) as any[]) {
-    const nearest = [...world.chunks].sort((a, b) =>
-      Math.hypot(a.origin[0] - world.spawn[0], a.origin[2] - world.spawn[2]) - Math.hypot(b.origin[0] - world.spawn[0], b.origin[2] - world.spawn[2]))[0];
-    if (!nearest) throw new Error('Sample world has no chunks.');
-    paths.add(nearest.file); paths.add(nearest.voxels);
+  // A source-only clone verifies the published release against small pinned hashes.
+  // Asset maintainers can supply a local root when checking a newly generated release.
+  const checks = JSON.parse(await readFile(new URL('../deployment/asset-checks.json', import.meta.url), 'utf8'));
+  let sampleWorlds: number;
+  const expected = new Map<string, string>();
+  if (root) {
+    const manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8'));
+    sampleWorlds = Object.keys(manifest.worlds).length;
+    const paths = new Set<string>(['manifest.json', 'atlas.png', 'steve.png', 'weather/assets.json', 'ui/assets.json']);
+    for (const world of Object.values(manifest.worlds) as any[]) {
+      const nearest = [...world.chunks].sort((a, b) =>
+        Math.hypot(a.origin[0] - world.spawn[0], a.origin[2] - world.spawn[2]) - Math.hypot(b.origin[0] - world.spawn[0], b.origin[2] - world.spawn[2]))[0];
+      if (!nearest) throw new Error('Sample world has no chunks.');
+      paths.add(nearest.file); paths.add(nearest.voxels);
+    }
+    for (const file of paths) expected.set(file, digest(await readFile(join(root, file))));
+  } else {
+    if (new URL(base).pathname.split('/').pop() !== checks.assetVersion)
+      throw new Error('CDN release has no pinned checks. Update deployment/asset-checks.json with the new asset release.');
+    sampleWorlds = checks.sampleWorlds;
+    for (const [file, hash] of Object.entries(checks.files)) {
+      if (!/^[a-f0-9]{64}$/.test(String(hash)) || !file || file.startsWith('/') || file.split('/').includes('..'))
+        throw new Error('Invalid pinned asset check.');
+      expected.set(file, String(hash));
+    }
+    if (!expected.has('manifest.json') || expected.size < 5 || !sampleWorlds) throw new Error('Incomplete pinned asset checks.');
   }
   let checkedBase = base;
-  for (const file of paths) {
+  for (const [file, hash] of expected) {
     const request = () => fetch(`${checkedBase}/${file}`, { headers: { Origin: origin }, signal: AbortSignal.timeout(60000) });
     let response = await request();
     if (checkedBase === base && challengeFallback && response.status === 403 && response.headers.get('cf-mitigated') === 'challenge') {
@@ -81,10 +100,10 @@ export async function verifyCdn(base: string, origin: string, root = resolve('pu
     const cors = response.headers.get('access-control-allow-origin');
     if (cors !== '*' && cors !== origin) { await response.body?.cancel(); throw new Error(`CDN CORS does not allow ${origin}: ${file}`); }
     if (/\.gz$/.test(file) && response.headers.get('content-encoding')) { await response.body?.cancel(); throw new Error(`Do not set Content-Encoding on the already-compressed chunk file: ${file}`); }
-    const remote = new Uint8Array(await response.arrayBuffer()), local = file === 'manifest.json' ? manifestBytes : await readFile(join(root, file));
-    if (digest(remote) !== digest(local)) throw new Error(`CDN assets differ from this checkout: ${file}. Publish a new version instead of overwriting immutable URLs.`);
+    const remote = new Uint8Array(await response.arrayBuffer());
+    if (digest(remote) !== hash) throw new Error(`CDN assets differ from this checkout: ${file}. Publish a new version instead of overwriting immutable URLs.`);
   }
-  console.log(`CDN verified: ${paths.size} files, all ${Object.keys(manifest.worlds).length} sample worlds, CORS and exact content (${checkedBase}).`);
+  console.log(`CDN verified: ${expected.size} files, all ${sampleWorlds} sample worlds, CORS and exact content (${checkedBase}).`);
 }
 function aws(args: string[]) {
   const result = spawnSync('aws', args, { stdio: 'inherit', shell: false });
@@ -99,15 +118,18 @@ async function main() {
     return;
   }
   if (action === 'verify') {
-    await verifyCdn(externalAssetUrl(env.VITE_ASSET_BASE_URL, true)!, env.ASSET_CHECK_ORIGIN || 'https://mcviewer.riyo.me', resolve('public/generated'), env.ASSET_CHECK_BASE_URL);
+    await verifyCdn(externalAssetUrl(env.VITE_ASSET_BASE_URL || publishedAssetUrl, true)!, env.ASSET_CHECK_ORIGIN || 'https://mcviewer.riyo.me', undefined, env.ASSET_CHECK_BASE_URL || (env.VITE_ASSET_BASE_URL && env.VITE_ASSET_BASE_URL !== publishedAssetUrl ? undefined : release.challengeVerificationUrl));
     return;
   }
-  const version = assetVersion(), size = await inventory(resolve('public/generated'));
+  if (action === 'report') {
+    console.log(`Published assets: ${(release.bytes / 1024 ** 3).toFixed(2)} GiB, ${release.files} files, version ${release.assetVersion}.`);
+    console.log(publishedAssetUrl);
+    return;
+  }
+  const version = assetVersion(env.ASSET_VERSION), size = await inventory(resolve('public/generated'));
+  if (action === 'publish' && !env.ASSET_VERSION) throw new Error('Set a new ASSET_VERSION before publishing; generated files are never committed.');
   console.log(`Generated assets: ${(size.bytes / 1024 ** 3).toFixed(2)} GiB, ${size.files} files, version ${version}.`);
-  if (action === 'report') return;
   if (action !== 'publish') throw new Error('Use hosting.ts report | publish [--dry-run] | verify | output [directory].');
-  if (execFileSync('git', ['status', '--porcelain', '--', 'public/generated'], { encoding: 'utf8' }).trim())
-    throw new Error('Commit generated asset changes before publishing an immutable version.');
   if (size.bytes > 8 * 1024 ** 3) throw new Error('Asset version exceeds the 8 GiB safety budget. Review R2 usage before uploading.');
   const { R2_ACCOUNT_ID: account, R2_BUCKET: bucket, R2_PUBLIC_URL: publicUrl } = env;
   if (!/^[a-f0-9]{32}$/.test(account || '') || !/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(bucket || ''))
@@ -117,7 +139,7 @@ async function main() {
   const origin = env.ASSET_CHECK_ORIGIN || 'https://mcviewer.riyo.me', dryRun = process.argv.includes('--dry-run');
   if (!dryRun) {
     const existing = await fetch(`${base}/manifest.json`, { method: 'HEAD', signal: AbortSignal.timeout(30000) });
-    if (existing.ok) { await verifyCdn(base, origin); console.log(`Already published. VITE_ASSET_BASE_URL=${base}`); return; }
+    if (existing.ok) { await verifyCdn(base, origin, resolve('public/generated')); console.log(`Already published. VITE_ASSET_BASE_URL=${base}`); return; }
     if (existing.status !== 404) throw new Error(`Cannot inspect CDN version (HTTP ${existing.status}). Check bucket/domain configuration first.`);
   }
   const common = ['--endpoint-url', `https://${account}.r2.cloudflarestorage.com`, '--region', 'auto', '--profile', env.R2_PROFILE || 'minecraft-assets'];
@@ -131,7 +153,7 @@ async function main() {
     if (dryRun) console.log(JSON.stringify(['aws', ...args]));
     else aws(args);
   }
-  if (!dryRun) await verifyCdn(base, origin);
+  if (!dryRun) await verifyCdn(base, origin, resolve('public/generated'));
   console.log(`${dryRun ? 'Planned configuration' : 'Published'}: VITE_ASSET_BASE_URL=${base}`);
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href)

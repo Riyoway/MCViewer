@@ -1,0 +1,6 @@
+minecraft-memory-assets/
+public/generated/
+.cache/
+.playwright-mcp/
+test-results/
+*.bundle

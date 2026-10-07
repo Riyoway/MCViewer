@@ -1,5 +1,5 @@
 {
-  "name": "minecraft-nostalgia-space",
+  "name": "mcviewer",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -20,7 +20,9 @@
     "fluid-assets": "tsx scripts/fluid-assets.ts",
     "menu-assets": "tsx scripts/viewer-menu-assets.ts",
     "viewer-data": "tsx scripts/viewer-data.ts",
-    "test": "tsx tests/check.ts && tsx tests/building.ts && tsx tests/viewer.ts && tsx tests/language.ts && tsc --project tsconfig.hosting.json && tsx tests/hosting.ts"
+    "test": "tsc --noEmit && tsx tests/core.ts && tsx tests/language.ts && tsc --project tsconfig.hosting.json && tsx tests/hosting.ts",
+    "test:assets": "tsx tests/check.ts && tsx tests/building.ts && tsx tests/viewer.ts && tsx tests/language.ts && tsc --project tsconfig.hosting.json && tsx tests/hosting.ts",
+    "assets:pin": "tsx scripts/pin-assets.ts"
   },
   "dependencies": {
     "three": "^0.180.0"

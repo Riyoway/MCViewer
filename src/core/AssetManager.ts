@@ -4,8 +4,7 @@ import type { Manifest, MeshData } from '../minecraft/types';
 import type { PackedMesh } from '../minecraft/binary';
 
 const external=import.meta.env?.VITE_ASSET_BASE_URL,base=(external||`${import.meta.env?.BASE_URL??'/'}generated`).replace(/\/$/,'');
-const version=typeof __ASSET_VERSION__==='undefined'?'local':__ASSET_VERSION__;
-export const assetUrl=(file:string)=>/^(blob:|data:|https?:)/.test(file)?file:`${base}/${!external&&import.meta.env?.PROD?`${version}/`:''}${file}`;
+export const assetUrl=(file:string)=>/^(blob:|data:|https?:)/.test(file)?file:`${base}/${file}`;
 // Java lightmap brightness. Console Gamma is applied to the composed display instead.
 export const lightmap=`uniform float daylight;uniform float gamma;
 vec3 minecraftLight(vec2 level,float glow) {
