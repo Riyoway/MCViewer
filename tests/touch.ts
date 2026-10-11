@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import {TouchInput,touchDefaults,joystickVector} from '../src/core/TouchInput.ts';
+import {Movement} from '../src/core/Movement.ts';
+import {Player} from '../src/core/Player.ts';
+import {Collision} from '../src/core/Collision.ts';
+import {Voxels} from '../src/minecraft/Voxels.ts';
+import type {Block} from '../src/minecraft/types.ts';
+const events:unknown[]=[];
+const input=new TouchInput({...touchDefaults},{look:(x,y)=>events.push(['look',x,y]),jump:()=>events.push(['jump']),action:(button,down)=>events.push(['action',button,down]),aim:(x,y)=>events.push(['aim',x,y])});
+assert.deepEqual(joystickVector(0,0,50),{forward:0,strafe:0,sprint:false});
+assert.equal(joystickVector(2,2,50).forward,0,'Thumb jitter stays in the dead zone');
+assert.equal(joystickVector(0,-80,50).forward,1);assert(joystickVector(0,-80,50).sprint);
+assert(Math.abs(Math.hypot(joystickVector(80,-80,50).forward,joystickVector(80,-80,50).strafe)-1)<1e-8,'Diagonal input is normalized');
+input.down(1,'move',100,100,0);input.move(1,100,50);assert.equal(input.motion.forward,1);
+input.down(2,'look',400,200,0);input.down(3,'jump',600,300,10);assert(input.motion.jump);assert.equal(input.motion.forward,1);
+assert.equal(input.down(4,'look',410,210,20),false,'Second look pointer cannot teleport the camera');
+input.move(2,460,190);assert.deepEqual(events.at(-1),['look',60,-10]);input.update(1000);assert(!events.some(e=>JSON.stringify(e)==='["action",0,true]'),'Camera drag cannot mine');
+input.up(2);assert.equal(input.motion.forward,1,'Lifting look thumb preserves movement');input.up(3);assert(!input.motion.jump);input.up(1);assert.equal(input.motion.forward,0);
+events.length=0;input.down(10,'look',400,200,2000);input.update(2249);assert(!events.some(e=>JSON.stringify(e)==='["action",0,true]'));input.update(2250);assert.deepEqual(events.at(-1),['action',0,true]);input.up(10);assert(events.some(e=>JSON.stringify(e)==='["action",0,false]'));assert(!events.some(e=>JSON.stringify(e)==='["action",2,true]'),'Mining release never places');
+events.length=0;input.down(11,'look',400,200,3000);input.up(11);assert(events.some(e=>JSON.stringify(e)==='["action",2,true]'),'Quick tap uses touched location');
+events.length=0;input.down(12,'look',400,200,4000);input.up(12,true);assert(!events.some(e=>JSON.stringify(e)==='["action",2,true]'),'Canceled pointers never place');
+input.down(20,'jump',600,300,5000);input.down(21,'sneak',600,350,5000);input.reset();assert(!input.motion.jump&&!input.motion.sneak&&!input.motion.sprint);assert.equal(input.fingers.size,0);
+input.options.touchMode='joystick-crosshair';events.length=0;input.down(25,'look',400,200,6000);input.update(7000);input.up(25);assert(!events.some(e=>Array.isArray(e)&&e[0]==='action'),'Crosshair action buttons isolate looking from building');
+input.down(26,'attack',600,300,8000);assert(events.some(e=>JSON.stringify(e)==='["action",0,true]'));input.reset();assert(events.some(e=>JSON.stringify(e)==='["action",0,false]'));
+input.options.touchMode='dpad-tap';input.down(30,'move',100,50,9000,100,100,60);assert.equal(input.motion.forward,1);input.up(30);input.down(31,'move',100,50,9250,100,100,60);assert(input.motion.sprint,'D-pad double forward enables sprint');input.up(31);assert(!input.motion.sprint);
+const block={name:'stone',solid:true,collision:[{from:[0,0,0],to:[1,1,1]}]} as Block;
+function fixture(height=1,ceiling=false){const voxels=new Voxels();voxels.fill([-3,-1,-3],[3,0,3],1);voxels.fill([-1,0,-1],[1,height,0],1);if(ceiling)voxels.fill([-1,2,0],[1,3,2],1);const body=new Movement(new Collision(voxels,[undefined,block] as unknown as Block[]));body.position.splice(0,3,0,0,.65);body.grounded=true;return body;}
+const jump=fixture();jump.tick(1,0,0,false,false,false,true);assert(jump.position[1]>.3,'Mobile auto jump clears a one-block step');
+for(const [height,ceiling,sneak] of [[2,false,false],[1,true,false],[1,false,true]] as const){const body=fixture(height,ceiling);body.tick(1,0,0,false,false,sneak,true);assert.equal(body.position[1],0,'No auto jump into tall walls, ceilings, or while sneaking');}
+const desktop=fixture();desktop.tick(1,0,0,false,false,false);assert.equal(desktop.position[1],0,'Auto jump does not change desktop movement');
+const player=Object.create(Player.prototype) as Player;Object.assign(player,{movement:{flying:false,vy:0},lastJump:-1000,lastDescend:-1000});
+player.jumpPress(1000,false);assert(!player.movement.flying);player.jumpPress(1200,false);assert(player.movement.flying,'Double-tap Jump starts touch flight');
+player.jumpPress(1500,false);player.jumpPress(1700,false);assert(player.movement.flying,'Touch ascent taps cannot accidentally cancel flight');
+player.descendPress(2000);assert(player.movement.flying);player.descendPress(2200);assert(!player.movement.flying,'Double-tap Descend ends touch flight');
+player.jumpPress(3000);player.jumpPress(3200);assert(player.movement.flying);player.jumpPress(3600);player.jumpPress(3800);assert(!player.movement.flying,'Desktop Space still toggles flight both ways');
+const water={name:'water',solid:false,collision:[],fluid:{type:'water',level:0,falling:false}} as unknown as Block;
+// fluidHeight uses the native block name/properties; source blocks retain those.
+water.name='water';water.properties={level:'0'};
+const pond=new Voxels();pond.fill([-3,0,-3],[3,5,3],2);const swimmer=new Movement(new Collision(pond,[undefined,block,water] as unknown as Block[]));swimmer.position.splice(0,3,0,2,0);swimmer.tick(0,0,0,false,false,false,false,true);assert(swimmer.swimming&&swimmer.position[1]<1.97,'Touch Descend actively dives in water');
+console.log('Touch input passed: analog movement, independent fingers, tap/hold/drag, cancellation, crosshair actions, D-pad sprint and collision-aware auto jump.');

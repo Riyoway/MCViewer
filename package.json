@@ -20,7 +20,8 @@
     "fluid-assets": "tsx scripts/fluid-assets.ts",
     "menu-assets": "tsx scripts/viewer-menu-assets.ts",
     "viewer-data": "tsx scripts/viewer-data.ts",
-    "test": "tsc --noEmit && tsx tests/core.ts && tsx tests/language.ts && tsc --project tsconfig.hosting.json && tsx tests/hosting.ts",
+    "test": "tsc --noEmit && tsx tests/core.ts && tsx tests/touch.ts && tsx tests/language.ts && tsc --project tsconfig.hosting.json && tsx tests/hosting.ts",
+    "test:touch-browser": "node tests/touch-browser.cjs",
     "test:assets": "tsx tests/check.ts && tsx tests/building.ts && tsx tests/viewer.ts && tsx tests/language.ts && tsc --project tsconfig.hosting.json && tsx tests/hosting.ts",
     "assets:pin": "tsx scripts/pin-assets.ts"
   },
@@ -32,6 +33,7 @@
     "@types/three": "^0.180.0",
     "fflate": "^0.8.2",
     "minecraft-data": "^3.100.0",
+    "playwright": "^1.64.0",
     "prismarine-nbt": "^2.7.0",
     "sharp": "^0.35.5",
     "tsx": "^4.20.5",

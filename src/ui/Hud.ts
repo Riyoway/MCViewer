@@ -23,13 +23,14 @@ export class Hud {
     this.selection.className='hotbar-selection';this.hotbar.append(this.selection);
     for(let i=0;i<9;i++){
       const cell=document.createElement('div');cell.className='hotbar-item';cell.style.left=`${3+i*20}px`;this.hotbar.append(cell);this.bar.push(cell);
-      const button=this.slot(9+i*18,112);button.addEventListener('click',()=>{this.inventory.swap(i);this.save();this.drawHotbar();});
+      cell.addEventListener('pointerdown',event=>{if(event.pointerType==='touch'){event.preventDefault();this.select(i);}});
+      const button=this.slot(9+i*18,112);button.addEventListener('click',()=>{if(this.touch){this.select(i);return;}this.inventory.swap(i);this.save();this.drawHotbar();});
       button.addEventListener('contextmenu',event=>{event.preventDefault();this.inventory.assign(null,i);this.save();this.drawHotbar();});
       button.addEventListener('pointerenter',()=>this.showTooltip(this.item(this.inventory.hotbar[i])??null));this.slots.push(button);
     }
     for(let i=0;i<45;i++){
       const button=this.slot(9+i%9*18,18+Math.floor(i/9)*18);this.grid.push(button);
-      button.addEventListener('click',event=>{const item=this.catalog[this.row*9+i];if(!item)return;if(event.shiftKey){const empty=this.inventory.hotbar.indexOf(null);this.inventory.assign(item.id,empty<0?this.inventory.selected:empty);this.save();this.drawHotbar();}else{this.inventory.cursor=item.id;this.drawCursor();}});
+      button.addEventListener('click',event=>{const item=this.catalog[this.row*9+i];if(!item)return;if(this.touch){this.inventory.assign(item.id);this.save();this.drawHotbar();}else if(event.shiftKey){const empty=this.inventory.hotbar.indexOf(null);this.inventory.assign(item.id,empty<0?this.inventory.selected:empty);this.save();this.drawHotbar();}else{this.inventory.cursor=item.id;this.drawCursor();}});
       button.addEventListener('pointerenter',()=>{this.hovered=this.catalog[this.row*9+i]??null;this.showTooltip(this.hovered);});
       button.addEventListener('pointerleave',()=>{this.hovered=null;this.tooltip.hidden=true;});
     }
@@ -40,6 +41,11 @@ export class Hud {
     this.overlay.addEventListener('contextmenu',event=>event.preventDefault());
     this.overlay.addEventListener('pointermove',event=>{this.cursor.style.left=`${event.clientX}px`;this.cursor.style.top=`${event.clientY}px`;this.tooltip.style.left=`${Math.min(innerWidth-180,event.clientX+14)}px`;this.tooltip.style.top=`${Math.min(innerHeight-32,event.clientY-24)}px`;});
     this.overlay.addEventListener('pointerdown',event=>{if(event.target===this.overlay){this.inventory.cursor=null;this.drawCursor();}});
+    let catalogDrag:{id:number;y:number;row:number;dragged:boolean}|null=null;
+    this.panel.addEventListener('pointerdown',event=>{if(event.pointerType==='touch'&&event.target!==this.search&&event.target!==this.scroller)catalogDrag={id:event.pointerId,y:event.clientY,row:this.row,dragged:false};});
+    this.panel.addEventListener('pointermove',event=>{if(!catalogDrag||event.pointerId!==catalogDrag.id)return;const pixels=(event.clientY-catalogDrag.y)/Number(document.documentElement.style.getPropertyValue('--inventory-scale')||1);if(Math.abs(pixels)>8)catalogDrag.dragged=true;if(catalogDrag.dragged){event.preventDefault();this.scroll(catalogDrag.row-Math.round(pixels/18));}});
+    this.panel.addEventListener('click',event=>{if(catalogDrag?.dragged){event.stopImmediatePropagation();event.preventDefault();catalogDrag=null;}},true);
+    this.panel.addEventListener('pointercancel',()=>catalogDrag=null);
     window.addEventListener('resize',()=>this.resize());this.resize();
   }
   static async create(assets:AssetManager){
@@ -54,6 +60,8 @@ export class Hud {
     this.material.map!.dispose();this.material.map=this.assets.opaque.map!.clone();this.material.map.minFilter=NearestFilter;this.material.map.needsUpdate=true;this.material.needsUpdate=true;
     this.world=name;this.theme=this.data.themes[theme??(name.startsWith('tutorial')?'vanilla':name)]??this.data.themes.vanilla;this.icons.clear();this.catalog=this.theme.items;this.search.value='';this.row=0;
     this.hotbar.style.backgroundImage=`url("${assetUrl(this.theme.hotbar)}")`;this.panel.style.backgroundImage=`url("${assetUrl(this.theme.inventory)}")`;
+    // A hidden inventory's CSS image otherwise waits until the first tap to load.
+    for(const path of [this.theme.inventory,this.theme.scroller]){const image=new Image();image.src=assetUrl(path);}
     this.scroller.style.setProperty('--scroller',`url("${assetUrl(this.theme.scroller)}")`);
     (document.querySelector('.crosshair') as HTMLElement).style.backgroundImage=`url("${assetUrl(this.theme.crosshair)}")`;
     const crosshair=document.querySelector('.crosshair') as HTMLElement;crosshair.style.width=`${this.theme.crosshairSize[0]}px`;crosshair.style.height=`${this.theme.crosshairSize[1]}px`;
@@ -74,7 +82,8 @@ export class Hud {
     const existing=this.inventory.hotbar.indexOf(id),empty=this.inventory.hotbar.indexOf(null);
     if(existing>=0)this.select(existing);else {if(empty>=0)this.select(empty);this.inventory.assign(id);this.save();this.drawHotbar();}return true;
   }
-  show(){this.open=true;this.overlay.hidden=false;document.body.classList.add('inventory-open');this.search.focus();this.drawCatalog();}
+  private get touch(){return document.body.classList.contains('touch-device');}
+  show(focusSearch=true){this.open=true;this.overlay.hidden=false;document.body.classList.add('inventory-open');if(focusSearch)this.search.focus();this.drawCatalog();}
   hide(){this.open=false;this.overlay.hidden=true;document.body.classList.remove('inventory-open');this.inventory.cursor=null;this.drawCursor();this.tooltip.hidden=true;}
   key(event:KeyboardEvent){
     if(event.code==='Escape')return 'close';
@@ -86,7 +95,7 @@ export class Hud {
   private scroll(row:number){this.row=Math.max(0,Math.min(this.maxRow,row));this.drawCatalog();this.hovered=null;this.tooltip.hidden=true;}
   private item(id:string|null){return id?this.theme?.items.find(item=>item.id===id):undefined;}
   private save(){try{localStorage.setItem(`hotbar:${this.world}`,JSON.stringify(this.inventory.hotbar));}catch{/* private mode */}}
-  private resize(){const scale=Math.max(1,Math.min(4,Math.floor(innerWidth/320),Math.floor(innerHeight/240)));document.documentElement.style.setProperty('--gui-scale',String(scale));}
+  private resize(){const scale=Math.max(1,Math.min(4,Math.floor(innerWidth/320),Math.floor(innerHeight/240)));document.documentElement.style.setProperty('--gui-scale',String(scale));document.documentElement.style.setProperty('--inventory-scale',String(Math.min(3,(innerWidth-32)/195,(innerHeight-96)/136)));document.documentElement.style.setProperty('--touch-bar-scale',String(Math.min(2.5,(innerWidth-32)/204)));}
   private drawHotbar(){this.selection.style.left=`${this.inventory.selected*20-1}px`;for(let i=0;i<9;i++){const item=this.item(this.inventory.hotbar[i]);this.icon(this.bar[i],item);this.icon(this.slots[i],item);}this.drawCursor();}
   private drawCatalog(){for(let i=0;i<45;i++)this.icon(this.grid[i],this.catalog[this.row*9+i]);this.scroller.style.setProperty('--scroll-position',`${this.maxRow?this.row/this.maxRow*75:0}px`);this.scroller.setAttribute('aria-valuenow',String(this.row));this.scroller.setAttribute('aria-valuemax',String(this.maxRow));}
   private drawCursor(){this.cursor.hidden=!this.inventory.cursor;this.icon(this.cursor,this.item(this.inventory.cursor));}

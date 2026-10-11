@@ -11,7 +11,8 @@ export function nativeOptions(root:HTMLElement){
     const update=()=>{
       // GuiOptionSlider uses an 8 x 20 handle, integer pixel positions and a 4px inset.
       const fraction=(Number(field.value)-Number(field.min))/(Number(field.max)-Number(field.min));
-      thumb.style.left=`${Math.floor(fraction*((field.clientWidth||150)-8))}px`;
+      const handle=document.body.classList.contains('touch-device')?16:8;
+      thumb.style.left=`${Math.floor(fraction*((field.clientWidth||150)-handle))}px`;
       field.setAttribute('aria-label',caption.textContent??'');
       field.setAttribute('aria-valuetext',caption.querySelector('output')?.textContent??field.value);
     };

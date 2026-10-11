@@ -7,10 +7,19 @@ A browser-based Minecraft world viewer built with Three.js, TypeScript and Vite.
 - Explore 14 sample tutorial and Mash-up worlds, or import a Java Edition world ZIP/folder.
 - Load a resource pack alongside an imported world.
 - Walk, sprint, jump, fly, switch perspective, and place or break blocks in creative mode.
+- Phone/tablet touch controls with joystick, D-pad and crosshair modes.
 - Adjust time, weather, view distance, and Legacy Console display gamma.
 - English, Japanese, Simplified Chinese, Traditional Chinese and Korean menus.
 
 Imported worlds, resource packs and world edits stay in the browser's IndexedDB. They are not uploaded to the server. Reset World removes local edits to the selected world.
+
+On a phone or tablet, open a world to show the touch controls automatically.
+Swipe to look, use the left control to move, and double-tap Jump to start flying.
+Double-tap Descend to stop flying. Tap a block to use/place, or hold to break.
+Crosshair mode uses separate Attack and Use buttons. The `...` button beside
+the hotbar opens the creative inventory; tap a slot, then an item to assign it.
+Touch sensitivity, mode, size, opacity, joystick lock and auto jump are under
+**Options → Controls → Touch**. See [touch controls](docs/touch-controls.md).
 
 ## Development
 

@@ -7,11 +7,16 @@ export class Movement {
   private jumpDelay=0;
   constructor(public collision:Collision){}
   stop(){this.vx=0;this.vz=0;this.vy=0;this.jumpDelay=0;}
-  tick(forward:number,strafe:number,yaw:number,jump:boolean,sprint:boolean,sneak:boolean) {
+  tick(forward:number,strafe:number,yaw:number,jump:boolean,sprint:boolean,sneak:boolean,autoJump=false,descend=false) {
     if(!this.collision.loaded(this.position[0],this.position[2]))return;
     const blockAt=(y:number)=>this.collision.blocks[this.collision.voxels.get(Math.floor(this.position[0]),Math.floor(y),Math.floor(this.position[2]))];
     this.swimming=!this.flying&&[.01,.9,1.79].some(offset=>{const y=this.position[1]+offset;return y-Math.floor(y)<fluidHeight(blockAt(y),blockAt(Math.floor(y)+1),'water');});
     const running=sprint&&forward>0&&!sneak,ground=blockAt(this.position[1]-.01);
+    if(autoJump&&this.grounded&&!this.flying&&!this.swimming&&!sneak&&Math.hypot(forward,strafe)>.1){
+      const length=Math.hypot(forward,strafe),x=this.position[0]+(strafe*Math.cos(yaw)-forward*Math.sin(yaw))/length*.45,z=this.position[2]+(-strafe*Math.sin(yaw)-forward*Math.cos(yaw))/length*.45,y=this.position[1];
+      // Only a one-block obstacle with clear headroom; slabs already use auto-step.
+      if(this.collision.overlaps(x,y+.61,z)&&!this.collision.overlaps(x,y+1,z)&&!this.collision.overlaps(this.position[0],y+1.25,this.position[2]))jump=true;
+    }
     const friction=this.grounded&&!this.flying?(ground?.name==='blue_ice'?.989:/ice/.test(ground?.name??'')?.98:ground?.name==='slime_block'?.8:.6):1;
     const drag=this.swimming?.8:friction*.91;
     const acceleration=this.flying?(running?.1:.05):this.swimming?.02:this.grounded?(running?.13:.1)*.216/(friction**3):running?.026:.02;
@@ -22,7 +27,7 @@ export class Movement {
     this.vz+=(-strafe*Math.sin(yaw)-forward*Math.cos(yaw))*acceleration;
     if(this.jumpDelay)this.jumpDelay--;if(!jump)this.jumpDelay=0;
     if(this.flying)this.vy+=(Number(jump)-Number(sneak))*.15;
-    else if(this.swimming){if(jump)this.vy+=.04;}
+    else if(this.swimming){if(jump)this.vy+=.04;if(descend)this.vy-=.04;}
     else if(jump&&this.grounded&&!this.jumpDelay){this.vy=.42;this.jumpDelay=10;if(running){this.vx-=Math.sin(yaw)*.2;this.vz-=Math.cos(yaw)*.2;}}
     const [x,y,z]=this.position,dx=this.vx,dz=this.vz;
     this.collision.move(this.position,this.vx,this.vz,this.grounded&&!this.flying,sneak&&!this.flying);

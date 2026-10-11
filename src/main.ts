@@ -9,7 +9,10 @@ import {WorldStore,type SavedWorld,type LocalFile} from './viewer/WorldStore';
 import {ImportedWorld,type ImportResult} from './viewer/ImportWorld';
 import {ResourcePack} from './viewer/ResourcePack';
 import {ConsoleGamma} from './core/ConsoleGamma';
-import { Scene, PerspectiveCamera, Fog, Color, NearestFilter, NearestMipmapLinearFilter } from 'three';
+import { Scene, PerspectiveCamera, Fog, Color, Vector3, NearestFilter, NearestMipmapLinearFilter } from 'three';
+import {TouchControls,touchDevice} from './ui/TouchControls';
+import {touchDefaults} from './core/TouchInput';
+import type {Vec3} from './minecraft/types';
 import { createRenderer } from './core/Renderer';
 import { AssetManager, assetUrl } from './core/AssetManager';
 import { Player,lockPointer } from './core/Player';
@@ -34,13 +37,15 @@ document.title='Minecraft World Viewer';
 const panoramaShade=document.createElement('div');panoramaShade.id='panorama-shade';$('world').after(panoramaShade);
 const canvas=$<HTMLCanvasElement>('world'),enter=$<HTMLButtonElement>('enter'),loading=$('loading');
 // The old bob option defaulted on; the revised option starts off without resetting other settings.
-const defaults={gamma:50,legacy:true,view:6,fov:70,resolution:720,mipmap:true,viewBobbing:false,clouds:true,sensitivity:100,volume:50,effects:70,cycle:true,minutes:20,weather:'clear' as WeatherMode,weatherIntensity:100,weatherCycle:false,weatherMinutes:10};
+const defaults={gamma:50,legacy:true,view:touchDevice()?3:6,fov:70,resolution:720,mipmap:true,viewBobbing:false,clouds:true,sensitivity:100,volume:50,effects:70,cycle:true,minutes:20,weather:'clear' as WeatherMode,weatherIntensity:100,weatherCycle:false,weatherMinutes:10,...touchDefaults};
 const config={...defaults};
 try{const saved=JSON.parse(localStorage.getItem('world-settings')??'{}');for(const key of Object.keys(config) as (keyof typeof config)[])if(typeof saved[key]===typeof defaults[key])Object.assign(config,{[key]:saved[key]});}catch{/* storage may be unavailable */}
 if(![0,480,720].includes(config.resolution))config.resolution=defaults.resolution;
 if(!['clear','rain','thunder','snow'].includes(config.weather))config.weather='clear';
+if(!['joystick-tap','dpad-tap','joystick-crosshair'].includes(config.touchMode))config.touchMode=touchDefaults.touchMode;
+let touch:TouchControls|undefined;
 let world:World|null=null,player:Player|null=null,selected='',entered=false,request=0,ui='home-menu',settingsReturn='home-menu',debug=false,worldReady=false,defaultWorldName=true;
-function menu(id:string){ui=id;document.querySelectorAll<HTMLElement>('[data-screen]').forEach(panel=>panel.hidden=panel.id!==id);const panorama=!entered&&['home-menu','settings-menu','video-menu','sound-menu','controls-menu','world-settings-menu','help-menu','language-menu'].includes(id);document.body.classList.toggle('panorama-menu',panorama);document.body.classList.toggle('dirt-menu',!panorama&&(!entered||['map-menu','add-menu','loading-menu','pack-menu','delete-menu'].includes(id)));document.body.classList.toggle('pause-background',entered&&!document.body.classList.contains('dirt-menu'));}
+function menu(id:string){ui=id;touch?.setScreen(id);if(id!=='playing'){document.body.classList.remove('playing');$('hud').hidden=true;$('menus').inert=false;player?.stop();}document.querySelectorAll<HTMLElement>('[data-screen]').forEach(panel=>panel.hidden=panel.id!==id);const panorama=!entered&&['home-menu','settings-menu','video-menu','sound-menu','controls-menu','touch-menu','world-settings-menu','help-menu','language-menu'].includes(id);document.body.classList.toggle('panorama-menu',panorama);document.body.classList.toggle('dirt-menu',!panorama&&(!entered||['map-menu','add-menu','loading-menu','pack-menu','delete-menu'].includes(id)));document.body.classList.toggle('pause-background',entered&&!document.body.classList.contains('dirt-menu'));}
 function report(cause:unknown){console.warn('[World Viewer]',cause instanceof Event?'Unable to load an image.':cause);}
 async function init() {
   const preferred=savedLanguage();await loadLanguage('en');bindLanguage(document.body);if(preferred!=='en'){try{await loadLanguage(preferred);renderLanguage(document.body);}catch(cause){report(cause);}}
@@ -93,7 +98,7 @@ async function init() {
       if(field instanceof HTMLInputElement&&field.type==='checkbox')field.checked=Boolean(value);else field.value=String(value);
       if(field instanceof HTMLInputElement&&field.type==='range')Object.assign(config,{[key]:Number(field.value)});
       const output=document.getElementById(`${key}-value`);if(output){
-        let caption=`${config[key as keyof typeof config]}${['gamma','sensitivity','volume','effects','weatherIntensity'].includes(key)?'%':['minutes','weatherMinutes'].includes(key)?` ${t('min')}`:key==='view'?` ${t('chunks')}`:''}`;
+        let caption=`${config[key as keyof typeof config]}${['gamma','sensitivity','volume','effects','weatherIntensity','touchSensitivity','touchSize','touchOpacity'].includes(key)?'%':['minutes','weatherMinutes'].includes(key)?` ${t('min')}`:key==='view'?` ${t('chunks')}`:''}`;
         if(key==='fov')caption=config.fov===70?t('Normal'):config.fov===110?t('Quake Pro'):String(config.fov);
         if(key==='gamma'&&!config.legacy)caption=config.gamma===0?t('Moody'):config.gamma===100?t('Bright'):`+${config.gamma}%`;
         if((key==='volume'||key==='effects')&&value===0)caption=t('OFF');
@@ -107,6 +112,7 @@ async function init() {
     weather.setMode(config.weather);weather.intensity=config.weatherIntensity/100;weather.cycle=config.weatherCycle;weather.minutes=config.weatherMinutes;
     audio.setVolume(config.volume/100);audio.setEffectVolume(config.effects/100);if(world)world.radius=config.view;
     if(player){player.fov=config.fov;player.motionEnabled=config.viewBobbing;player.sensitivity=config.sensitivity*.00002;}
+    touch?.configure(config);
     resize();refreshOptions();try{localStorage.setItem('world-settings',JSON.stringify(config));}catch{/* private mode */}
   }
   for(const key of Object.keys(config) as (keyof typeof config)[])$(key).addEventListener('input',event=>{
@@ -145,60 +151,70 @@ async function init() {
       if(!player){player=new Player(camera,model,current.collision,canvas,locked=>{
         if(!worldReady)return;document.body.classList.toggle('playing',locked);$('hud').hidden=!locked;$('menus').inert=locked;
         if(locked){entered=true;hud.hide();}else {if(entered&&ui!=='map-menu'&&ui!=='inventory')menu('pause-menu');if(entered&&ui!=='inventory')$('resume').focus();}
-      });}player.collision=current.collision;player.movement.collision=current.collision;worldReady=true;spawn();audio.select(samples[name]?name:'tutorial');applySettings();enter.disabled=false;setLiteral(loading,'');
+      });player.viewModel.add(held.root);}player.collision=current.collision;player.movement.collision=current.collision;worldReady=true;spawn();audio.select(samples[name]?name:'tutorial');applySettings();enter.disabled=false;setLiteral(loading,'');
       if(imported?.warnings.length)console.info('World import:',imported.warnings);
       return current;
-    }catch(cause){source?.dispose();if(pendingImport===source)pendingImport=undefined;if(token===request){document.exitPointerLock();report(cause);menu('map-menu');void refreshList();}}
+    }catch(cause){source?.dispose();if(pendingImport===source)pendingImport=undefined;if(token===request){document.exitPointerLock?.();report(cause);menu('map-menu');void refreshList();}}
   }
-  function captureLoading(){const token=request+1;void lockPointer(canvas).then(()=>{if(token!==request)document.exitPointerLock();}).catch(()=>{/* The canvas click can retry if this browser requires another gesture. */});}
+  function captureLoading(){if(touch?.enabled||touchDevice())return;const token=request+1;void lockPointer(canvas).then(()=>{if(token!==request)document.exitPointerLock?.();}).catch(()=>{/* The canvas click can retry if this browser requires another gesture. */});}
   async function openSelected(){if(!selected)return;captureLoading();const opened=await choose(selected);if(opened&&world===opened)play();}
-  const play=()=>{if(!player||!worldReady)return;entered=true;menu('playing');document.body.classList.add('playing');document.body.classList.remove('pause-background');$('hud').hidden=false;$('menus').inert=true;hud.hide();canvas.focus({preventScroll:true});setText($('resume'),'Back to World');if(!player.locked)void player.lock().catch(()=>{/* Keep the world visible; a canvas click retries pointer lock. */});void audio.start().catch(report);};
+  const play=()=>{if(!player||!worldReady)return;entered=true;menu('playing');document.body.classList.add('playing');document.body.classList.remove('pause-background');$('hud').hidden=false;$('menus').inert=true;hud.hide();canvas.focus({preventScroll:true});setText($('resume'),'Back to World');if(!touch?.enabled&&!player.locked)void player.lock().catch(()=>{/* Keep the world visible; a canvas click retries pointer lock. */});void audio.start().catch(report);};
   enter.addEventListener('click',()=>void openSelected());$('resume').addEventListener('click',play);
-  const cancelLoading=()=>{request++;document.exitPointerLock();pendingImport?.dispose();pendingImport=undefined;worldReady=false;if(world){scene.remove(world.root);world.dispose();world=null;}entered=false;menu('map-menu');void refreshList();};$('cancel-loading').onclick=cancelLoading;
+  const cancelLoading=()=>{request++;document.exitPointerLock?.();pendingImport?.dispose();pendingImport=undefined;worldReady=false;if(world){scene.remove(world.root);world.dispose();world=null;}entered=false;menu('map-menu');void refreshList();};$('cancel-loading').onclick=cancelLoading;
   $('respawn').addEventListener('click',()=>{spawn();play();});
   $('reset-map').addEventListener('click',()=>{if(!worldReady||!world)return;setLiteral($('reset-map-name'),world.data.name);menu('reset-menu');$('cancel-reset').focus();});
   const cancelReset=()=>{menu('pause-menu');$('reset-map').focus();};
   $('cancel-reset').addEventListener('click',cancelReset);
   $('confirm-reset').addEventListener('click',()=>{if(!worldReady||!world)return;world.edits.clear();captureLoading();void choose(selected).then(opened=>{if(opened&&world===opened)play();});});
-  $('change-map').addEventListener('click',()=>{entered=false;worldReady=false;hud.hide();controls.reset();debris.clear();if(world){scene.remove(world.root);world.dispose();world=null;}audio.select('menu');menu('home-menu');document.exitPointerLock();$('home-worlds').focus();});
+  $('change-map').addEventListener('click',()=>{entered=false;worldReady=false;hud.hide();controls.reset();debris.clear();if(world){scene.remove(world.root);world.dispose();world=null;}audio.select('menu');menu('home-menu');document.exitPointerLock?.();$('home-worlds').focus();});
   window.addEventListener('wheel',event=>{if(player?.locked){event.preventDefault();hud.select(hud.inventory.selected+Math.sign(event.deltaY));}},{passive:false});
+  let touchAim:{x:number;y:number}|null=null;
+  const targetRay=()=>{
+    if(!player)return {eye:[0,0,0] as Vec3,look:[0,0,-1] as Vec3};
+    if(!touchAim)return {eye:player.eye.toArray() as Vec3,look:player.look.toArray() as Vec3};
+    const rect=canvas.getBoundingClientRect();camera.updateMatrixWorld();const look=new Vector3((touchAim.x-rect.left)/rect.width*2-1,1-(touchAim.y-rect.top)/rect.height*2,.5).unproject(camera).sub(camera.position).normalize();
+    return {eye:camera.position.toArray() as Vec3,look:look.toArray() as Vec3};
+  };
   const controls=new CreativeControls(()=>{
-    if(!player?.locked||!world||!worldReady)return;model.swing();const hit=world.target(player.eye.toArray(),player.look.toArray());
+    if(!player?.active||!world||!worldReady)return;model.swing();const ray=targetRay(),hit=world.target(ray.eye,ray.look);
     if(!hit||hud.selectedItem?.id.endsWith('_sword'))return;const block=assets.manifest.blocks[hit.id],light=world.light(...hit.position);
     if(world.destroy(hit)){debris.break(hit,light,world);audio.effect(`dig_${soundGroup(block.name)}`,1,.8);}
   },()=>{
-    if(!player?.locked||!world||!worldReady)return;
-    const sneaking=player.keys.has('ShiftLeft')||player.keys.has('ShiftRight'),hit=world.target(player.eye.toArray(),player.look.toArray());if(!hit)return;
-    if(!sneaking){const sound=world.interact(player.eye.toArray(),player.look.toArray());if(sound){model.swing();audio.effect(sound,.9);return;}}
-    const item=hud.selectedItem;if(item&&world.place(item.id,hit,player.look.toArray(),player.position)){model.swing();const base=assets.manifest.blocks[assets.manifest.building?.[world.building.theme]?.[item.id]??0];const group=soundGroup(base?.name??'stone');audio.effect(group==='glass'?'stone':group,1,.8);}
+    if(!player?.active||!world||!worldReady)return;
+    const ray=targetRay(),hit=world.target(ray.eye,ray.look);if(!hit)return;
+    if(!player.sneaking){const sound=world.interact(ray.eye,ray.look);if(sound){model.swing();audio.effect(sound,.9);return;}}
+    const item=hud.selectedItem;if(item&&world.place(item.id,hit,ray.look,player.position)){model.swing();const base=assets.manifest.blocks[assets.manifest.building?.[world.building.theme]?.[item.id]??0];const group=soundGroup(base?.name??'stone');audio.effect(group==='glass'?'stone':group,1,.8);}
   },()=>{if(player?.locked&&world){const hit=world.target(player.eye.toArray(),player.look.toArray());if(hit)hud.pick(assets.manifest.blocks[hit.id].name);}});
-  canvas.addEventListener('pointerdown',event=>{if(ui==='playing'&&worldReady&&!player?.locked){event.preventDefault();play();return;}if(player?.locked){event.preventDefault();controls.down(event.button);}});
-  window.addEventListener('pointerup',event=>controls.up(event.button));
+  const pause=()=>{if(!worldReady)return;menu('pause-menu');document.exitPointerLock?.();};
+  const inventory=()=>{if(!worldReady)return;menu('inventory');hud.show(!touch?.enabled);document.exitPointerLock?.();};
+  touch=new TouchControls(canvas,()=>player,controls,(x,y)=>{touchAim=x===null?null:{x,y:y!};},pause,inventory,play);
+  canvas.addEventListener('pointerdown',event=>{if(event.pointerType==='touch')return;if(ui==='playing'&&worldReady&&!player?.locked&&!touch?.enabled){event.preventDefault();play();return;}if(player?.locked){event.preventDefault();controls.down(event.button);}});
+  window.addEventListener('pointerup',event=>{if(event.pointerType!=='touch')controls.up(event.button);});
   document.addEventListener('pointerlockchange',()=>controls.reset());window.addEventListener('blur',()=>controls.reset());window.addEventListener('pagehide',()=>world?.edits.flush());
   canvas.addEventListener('contextmenu',event=>event.preventDefault());
   window.addEventListener('keydown',event=>{
     if(event.code==='Escape'&&ui==='loading-menu'){event.preventDefault();cancelLoading();return;}
-    if(event.code==='Escape'&&ui==='playing'&&!player?.locked){document.body.classList.remove('playing');$('hud').hidden=true;$('menus').inert=false;menu('pause-menu');$('resume').focus();return;}
+    if(event.code==='Escape'&&ui==='playing'&&!player?.locked){pause();$('resume').focus();return;}
     if(hud.open){if(hud.key(event)==='close'&&!event.repeat){event.preventDefault();hud.hide();play();}return;}
-    if(player?.locked){if(event.code==='KeyE'&&!event.repeat){event.preventDefault();ui='inventory';hud.show();document.exitPointerLock();}if(event.code==='F3'){event.preventDefault();debug=!debug;$('debug').hidden=!debug;}if(/^Digit[1-9]$/.test(event.code))hud.select(Number(event.code.slice(-1))-1);}
+    if(player?.active){if(event.code==='KeyE'&&!event.repeat){event.preventDefault();inventory();}if(event.code==='F3'){event.preventDefault();debug=!debug;$('debug').hidden=!debug;}if(/^Digit[1-9]$/.test(event.code))hud.select(Number(event.code.slice(-1))-1);}
     else if(event.code==='Escape'&&ui==='settings-menu')menu(settingsReturn);
     else if(event.code==='Escape'&&ui==='language-menu')menu(languageReturn);
     else if(event.code==='Escape'&&ui==='reset-menu')cancelReset();
     else if(event.code==='Escape'){if(ui==='loading-menu')cancelLoading();else if(ui==='pack-menu')menu(packReturn);else if(ui==='help-menu')menu(helpReturn);else if(ui==='map-menu')menu('home-menu');else if(ui==='add-menu'||ui==='delete-menu')menu('map-menu');else if(ui.endsWith('-menu')&&ui!=='home-menu'&&ui!=='pause-menu')menu('settings-menu');}
     else if(ui==='map-menu'&&event.target instanceof HTMLElement&&!event.target.closest('input,select')){const buttons=[...document.querySelectorAll<HTMLButtonElement>('[data-world]')];if(event.code==='ArrowDown'||event.code==='ArrowUp'){event.preventDefault();const index=buttons.findIndex(b=>b.dataset.world===selected),next=buttons[Math.max(0,Math.min(buttons.length-1,index+(event.code==='ArrowDown'?1:-1)))];if(next){selectEntry(next.dataset.world!);next.focus();next.scrollIntoView({block:'nearest'});}}else if(event.code==='Enter'&&selected&&event.target.id!=='enter')void openSelected();}
   });
-  canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();document.exitPointerLock();report('Rendering was interrupted. Please reload the page.');});
+  canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();pause();report('Rendering was interrupted. Please reload the page.');});
   applySettings();let last=performance.now(),elapsed=0,frames=0,fps=0,fpsTime=0,stepPosition:number[]|null=null,stepDistance=0,wasGrounded=false;
   renderer.setAnimationLoop(time=>{
     const dt=Math.min((time-last)/1000,.1);last=time;if(document.hidden)return;
-    elapsed+=dt;assets.time.value=elapsed;
-    if(player&&world&&worldReady){if(player.locked){player.update(dt);controls.update(dt);}world.update(player.position,player.locked?world.radius:1);if(player.position[1]<world.data.bounds.min[1]-20)spawn();if(world.error&&world.error!==lastWorldError){lastWorldError=world.error;report(world.error);}}
-    if(player&&world){held.select(hud.selectedItem,hud.worldTheme);held.update(dt,model,player.locked&&player.perspective===0);outline.update(worldReady&&player.locked?world.target(player.eye.toArray(),player.look.toArray()):null,assets.manifest.blocks,player.locked);debris.update(dt,camera,world,player.locked);}
+    elapsed+=dt;assets.time.value=elapsed;touch?.update();
+    if(player&&world&&worldReady){if(player.active){player.update(dt);controls.update(dt);}world.update(player.position,player.active?world.radius:1);if(player.position[1]<world.data.bounds.min[1]-20)spawn();if(world.error&&world.error!==lastWorldError){lastWorldError=world.error;report(world.error);}}
+    if(player&&world){held.select(hud.selectedItem,hud.worldTheme);held.update(dt,model,player.active&&player.perspective===0);outline.update(worldReady&&player.active&&(player.locked||touchAim||config.touchMode==='joystick-crosshair')?world.target(targetRay().eye,targetRay().look):null,assets.manifest.blocks,player.active);debris.update(dt,camera,world,player.active);}
     if(player&&world&&worldReady){
       const p=player.position,m=player.movement,distance=stepPosition?Math.hypot(p[0]-stepPosition[0],p[2]-stepPosition[2]):0;
       if(distance>2)stepDistance=0;else stepDistance+=distance;
       const landing=!!stepPosition&&!wasGrounded&&m.grounded&&p[1]<stepPosition[1];
-      if(player.locked&&!m.flying&&!player.keys.has('ShiftLeft')&&!player.keys.has('ShiftRight')&&(landing||stepDistance>1.65&&(m.grounded||m.swimming))){
+      if(player.active&&!m.flying&&!player.sneaking&&(landing||stepDistance>1.65&&(m.grounded||m.swimming))){
         const block=assets.manifest.blocks[world.voxels.get(Math.floor(p[0]),Math.floor(p[1]-.1),Math.floor(p[2]))]?.name??'stone';
         const sound=m.swimming?'swim':/snow/.test(block)?'snow':/sand/.test(block)?'sand':/gravel/.test(block)?'gravel':/wool|carpet|bed$/.test(block)?'cloth':/planks|log|wood|oak|birch|spruce|jungle|acacia|fence/.test(block)?'wood':/grass|dirt|leaves/.test(block)?'grass':'stone';
         audio.effect(sound,landing?.6:.35);stepDistance=0;
@@ -206,19 +222,19 @@ async function init() {
       stepPosition=[...p];wasGrounded=m.grounded;
     }
     if(audio.error&&audio.error!==lastAudioError){lastAudioError=audio.error;report(audio.error);}
-    if(world&&worldReady){weather.update(dt,camera.position,world,!!player?.locked,camera);if(weather.mode!==config.weather){config.weather=weather.mode;$<HTMLSelectElement>('weather').value=weather.mode;try{localStorage.setItem('world-settings',JSON.stringify(config));}catch{/* private mode */}}if(weather.consumeThunder())audio.effect('thunder',.8);}
-    sky.update(player?.locked?dt:0,camera.position,fog,config.legacy,config.view*16,weather);
+    if(world&&worldReady){weather.update(dt,camera.position,world,!!player?.active,camera);if(weather.mode!==config.weather){config.weather=weather.mode;$<HTMLSelectElement>('weather').value=weather.mode;try{localStorage.setItem('world-settings',JSON.stringify(config));}catch{/* private mode */}}if(weather.consumeThunder())audio.effect('thunder',.8);}
+    sky.update(player?.active?dt:0,camera.position,fog,config.legacy,config.view*16,weather);
     if(player&&world){const light=world.light(...player.eye.toArray());assets.entityLight.value.set((light>>4)/15,(light&15)/15);}
     const underwater=!!player&&world?.voxels.get(Math.floor(camera.position.x),Math.floor(camera.position.y),Math.floor(camera.position.z));
     const aboveWater=world?.voxels.get(Math.floor(camera.position.x),Math.floor(camera.position.y)+1,Math.floor(camera.position.z));
     const inWater=!!underwater&&camera.position.y-Math.floor(camera.position.y)<fluidHeight(assets.manifest.blocks[underwater],assets.manifest.blocks[aboveWater??0],'water');document.body.classList.toggle('underwater',inWater);
     if(inWater){fog.color.set(sky.environment?.water_fog_color??'#20417b');fog.near=0;fog.far=sky.environment?.water_fog_distance??24;}
-    audio.weather(weather.consumeRainSounds(),camera,!!player?.locked&&worldReady&&!inWater);
+    audio.weather(weather.consumeRainSounds(),camera,!!player?.active&&worldReady&&!inWater);
     if(document.body.classList.contains('panorama-menu'))panorama.render(renderer,dt);else renderer.render(scene,camera);frames++;fpsTime+=dt;if(fpsTime>1){fps=Math.round(frames/fpsTime);frames=0;fpsTime=0;}
     if(ui==='world-settings-menu'){$<HTMLInputElement>('time').value=String(sky.time);updateTime();}
     if(debug&&player&&world)$('debug').textContent=`${fps} FPS\nXYZ ${player.position.map(n=>n.toFixed(1)).join(' / ')}\n${world.data.name}\n${t(player.movement.flying?'Flying':player.movement.swimming?'Swimming':'Walking')}`;
   });
   await refreshList();menu('home-menu');$('menus').inert=false;$('menus').removeAttribute('aria-busy');
-  if(new URLSearchParams(location.search).has('debug'))Object.defineProperty(window,'mcViewer',{configurable:true,get:()=>({player,world,renderer,scene,camera,assets,sky,audio,weather,hud,config,controls,held,outline,debris,store,resourcePack,records})});
+  if(new URLSearchParams(location.search).has('debug'))Object.defineProperty(window,'mcViewer',{configurable:true,get:()=>({touch,player,world,renderer,scene,camera,assets,sky,audio,weather,hud,config,controls,held,outline,debris,store,resourcePack,records})});
 }
 void init().catch(report);
