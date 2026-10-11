@@ -50,6 +50,9 @@ const fs=require('node:fs');fs.mkdirSync('test-results/touch',{recursive:true});
  await page.locator('label:has(#touchMode)').tap();assert.equal(await page.evaluate(()=>window.mcViewer.config.touchMode),'joystick-crosshair');
  await page.locator('#touch-menu [data-options-back]').tap();await page.locator('#settings-back').tap();await page.locator('#resume').tap();
  assert(await page.locator('.touch-attack').isVisible());assert(await page.locator('.crosshair').isVisible());
+ // Vite's SPA fallback can return HTML with status 200 for a missing PNG.
+ // Decode visible control backgrounds as images, including the Use button.
+ const textureChecks=await page.locator('#touch-controls button:visible').evaluateAll(async nodes=>Promise.all(nodes.map(async node=>{const bg=getComputedStyle(node).backgroundImage,url=bg.match(/url\(["']?(.*?)["']?\)/)?.[1];if(!url)return true;return new Promise(resolve=>{const image=new Image();image.onload=()=>resolve(image.naturalWidth>0);image.onerror=()=>resolve(false);image.src=url;});})));assert(textureChecks.every(Boolean),'Every visible control has a decodable texture');
  await page.setViewportSize({width:844,height:390});await page.waitForTimeout(500);assert.equal(await page.evaluate(()=>Math.round(document.getElementById('world').getBoundingClientRect().width)),844);await page.screenshot({path:'test-results/touch/mobile-landscape.png'});
  const inside=await page.locator('#touch-controls button:visible').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return [n.className,r.x>=0&&r.y>=0&&r.right<=innerWidth&&r.bottom<=innerHeight];}));assert(inside.every(a=>a[1]),JSON.stringify(inside));
  touches=[{...(await center('.touch-joystick')),id:1}];await send('touchStart');touches[0].y-=50;await send('touchMove');await page.evaluate(()=>window.dispatchEvent(new Event('blur')));assert.equal(await page.evaluate(()=>window.mcViewer.touch.input.fingers.size),0);touches=[];await send('touchCancel');
