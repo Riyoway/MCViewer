@@ -4,6 +4,11 @@ The viewer detects coarse touch devices automatically and does not require
 Pointer Lock or fullscreen. Controls keep separate pointer captures for movement,
 camera and action fingers. Orientation changes, pointer cancellation, menus,
 backgrounding and focus loss release held inputs.
+Trusted taps request fullscreen followed by a landscape orientation lock. Menu
+requests run after the button action to preserve file-picker activation. Browsers
+without these APIs, or that refuse the request, continue in their normal layout;
+they cannot be forced into landscape by a website. A supported fullscreen exit
+allows the next tap to request it again. See the [Screen Orientation API](https://www.w3.org/TR/screen-orientation/).
 Short jump taps are buffered through the next physics tick so the 20 Hz movement
 loop does not drop them. Beginning flight from the ground also applies ascent.
 
@@ -70,3 +75,6 @@ terminal and `npm run test:touch-browser` in another. This test needs Chrome
 installed and access to the published R2 sample assets. `TOUCH_TEST_URL` can
 override the server URL (include `?debug`); `BROWSER_CHANNEL` can select an
 installed Chromium channel. Screenshots are saved in ignored `test-results/touch/`.
+`npm run test:player-browser` additionally checks trusted-tap fullscreen ordering,
+transparent-liquid occlusion of the hand pass, and front/back player rendering.
+Its fullscreen API is emulated; physical device rotation still needs device testing.

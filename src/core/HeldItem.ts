@@ -6,21 +6,24 @@ import type {PlayerModel} from './PlayerModel';
 
 export class HeldItem {
   readonly root=new Group();private pose=new Group();private key='';private pending='';private height=1;private requested?:InventoryItem;private theme?:UITheme;
+  readonly thirdPerson=new Group();private thirdMesh?:Mesh;
   private textures=new Map<string,Promise<MeshBasicMaterial>>();private blockMaterial:MeshBasicMaterial;
   constructor(private assets:AssetManager){
     this.root.matrixAutoUpdate=false;this.root.add(this.pose);
-    this.blockMaterial=assets.opaque.clone();this.blockMaterial.depthTest=false;this.blockMaterial.depthWrite=false;
+    this.blockMaterial=assets.opaque.clone();this.blockMaterial.fog=false;
     this.blockMaterial.onBeforeCompile=(shader,renderer)=>{assets.opaque.onBeforeCompile(shader,renderer);shader.uniforms.entityLight=assets.entityLight;shader.vertexShader=shader.vertexShader.replace('attribute vec3 tileInfo;','uniform vec2 entityLight;attribute vec3 tileInfo;').replace('vLight=lightLevel;','vLight=entityLight;');};
     this.blockMaterial.customProgramCacheKey=()=> 'minecraft-held-block-v1';
   }
   select(item:InventoryItem|undefined,theme:UITheme){this.requested=item;this.theme=theme;this.pending=item?`${theme.itemsTexture}:${item.id}`:'';}
-  clear(){this.key=this.pending='';this.requested=undefined;this.height=0;for(const object of [...this.pose.children]){object.removeFromParent();if(object instanceof Mesh)object.geometry.dispose();}this.blockMaterial.map=this.assets.opaque.map;this.blockMaterial.needsUpdate=true;}
+  private clearThird(){if(this.thirdMesh){this.thirdMesh.removeFromParent();(this.thirdMesh.material as MeshBasicMaterial).dispose();this.thirdMesh=undefined;}}
+  clear(){this.clearThird();this.key=this.pending='';this.requested=undefined;this.height=0;for(const object of [...this.pose.children]){object.removeFromParent();if(object instanceof Mesh)object.geometry.dispose();}this.blockMaterial.map=this.assets.opaque.map;this.blockMaterial.needsUpdate=true;}
   private async replace(item:InventoryItem|undefined,theme:UITheme,key:string){
+    this.clearThird();
     for(const object of [...this.pose.children]){this.pose.remove(object);if(object instanceof Mesh)object.geometry.dispose();}
     if(!item)return;
     let mesh:Mesh;
     if(item.icon!==undefined){
-      if(!this.textures.has(theme.itemsTexture))this.textures.set(theme.itemsTexture,new TextureLoader().loadAsync(assetUrl(theme.itemsTexture)).then(texture=>{texture.magFilter=NearestFilter;texture.minFilter=NearestFilter;texture.generateMipmaps=false;texture.colorSpace=SRGBColorSpace;const material=this.assets.skinMaterial(texture);material.depthTest=false;material.depthWrite=false;material.transparent=true;material.alphaTest=.1;return material;}));
+      if(!this.textures.has(theme.itemsTexture))this.textures.set(theme.itemsTexture,new TextureLoader().loadAsync(assetUrl(theme.itemsTexture)).then(texture=>{texture.magFilter=NearestFilter;texture.minFilter=NearestFilter;texture.generateMipmaps=false;texture.colorSpace=SRGBColorSpace;const material=this.assets.skinMaterial(texture);material.alphaTest=.1;return material;}));
       const material=await this.textures.get(theme.itemsTexture)!;if(this.key!==key)return;
       mesh=new Mesh(spriteGeometry(material.map!.image,item.icon,theme.itemColumns),material);
     }else if(item.block!==undefined){
@@ -29,8 +32,18 @@ export class HeldItem {
     const display=item.firstPerson??{rotation:[0,45,0],translation:[0,0,0],scale:[.4,.4,.4]};
     this.pose.rotation.set(...display.rotation.map(n=>n*Math.PI/180) as [number,number,number]);this.pose.position.set(...display.translation.map(n=>n/16) as [number,number,number]);this.pose.scale.set(...display.scale);
     mesh.renderOrder=1001;mesh.frustumCulled=false;this.pose.add(mesh);
+    // Share geometry, but use a normal depth-tested material in the world pass.
+    this.thirdMesh=mesh.clone();this.thirdMesh.material=(mesh.material as MeshBasicMaterial).clone();
+    this.thirdMesh.material.onBeforeCompile=(mesh.material as MeshBasicMaterial).onBeforeCompile;
+    this.thirdMesh.material.customProgramCacheKey=(mesh.material as MeshBasicMaterial).customProgramCacheKey;
+    this.thirdMesh.renderOrder=0;this.thirdPerson.add(this.thirdMesh);
+    this.thirdPerson.position.set(1/16,-10/16,-.12);
+    this.thirdPerson.rotation.set(item.block!==undefined?75*Math.PI/180:0,item.block!==undefined?Math.PI/4:0,0);
+    this.thirdPerson.scale.setScalar(item.block!==undefined?.375:.5);
   }
   update(dt:number,model:PlayerModel,visible:boolean){
+    if(this.thirdPerson.parent!==model.rightArm)model.rightArm.add(this.thirdPerson);
+    model.holding=!!this.requested;this.thirdPerson.visible=!!this.key&&!!this.requested;
     const changing=this.pending!==this.key,target=changing?0:1;this.height+=Math.max(-dt*8,Math.min(dt*8,target-this.height));
     if(changing&&this.height<.1&&this.theme){this.key=this.pending;void this.replace(this.requested,this.theme,this.key);}
     this.root.visible=visible&&!!this.key;if(this.root.visible)model.hand.visible=false;

@@ -62,7 +62,7 @@ export class Player {
     while(this.accumulator>=.05){this.previous=[...this.position];this.movement.tick(forward,strafe,this.yaw,this.active&&(this.jumpQueued||this.touch.jump||this.keys.has('Space')),sprint,sneak,this.touchActive&&this.touchAutoJump,this.touchActive&&this.touch.descend);this.jumpQueued=false;this.accumulator-=.05;}
     const rendered=this.position.map((n,i)=>this.previous[i]+(n-this.previous[i])*this.accumulator/.05) as Vec3;
     const speed=Math.hypot(this.position[0]-this.previous[0],this.position[2]-this.previous[2])*20;
-    this.model.update(dt,this.yaw,this.pitch,forward,strafe,speed,!this.motionEnabled);
+    this.model.update(dt,this.yaw,this.pitch,forward,strafe,speed,!this.motionEnabled,sneak,this.movement.flying,this.position[0]-this.previous[0],this.position[2]-this.previous[2]);
     this.viewModel.scale.x=this.touchActive?Math.min(1,this.camera.aspect/(16/9)):1;
     this.model.root.position.set(...rendered);this.model.root.visible=this.perspective!==0;this.model.hand.visible=this.active&&this.perspective===0;
     this.bob+=speed*dt*2.3;const amount=this.motionEnabled&&this.movement.grounded?Math.min(1,speed/4.3):0;

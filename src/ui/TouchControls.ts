@@ -3,10 +3,21 @@ import {t} from './Language';
 import type {Player} from '../core/Player';
 import type {CreativeControls} from '../core/CreativeControls';
 import './touch.css';
+import {MobileDisplay} from '../core/MobileDisplay';
 
 export const touchDevice=()=>navigator.maxTouchPoints>0&&matchMedia('(any-pointer:coarse)').matches;
 // Set the menu layout before loading assets, including on iOS without Pointer Lock.
 document.body.classList.toggle('touch-device',touchDevice());
+const mobileDisplay=new MobileDisplay();
+let lastTouch=-Infinity;
+document.addEventListener('pointerup',event=>{
+  if(!event.isTrusted||event.pointerType!=='touch')return;
+  lastTouch=performance.now();
+  if((event.target as HTMLElement).closest('canvas,#touch-controls'))void mobileDisplay.enter();
+},{capture:true});
+// Run after menu handlers so fullscreen cannot consume the activation needed
+// by a file picker. Pointer events in the world do not need a synthetic click.
+document.addEventListener('click',event=>{if(event.isTrusted&&event.detail>0&&performance.now()-lastTouch<1000)void mobileDisplay.enter();});
 export class TouchControls {
   readonly root=document.createElement('div');readonly input:TouchInput;
   enabled=touchDevice();private playing=false;private buttons=new Map<string,HTMLButtonElement>();
