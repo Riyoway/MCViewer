@@ -18,6 +18,7 @@ document.addEventListener('pointerup',event=>{
 // Run after menu handlers so fullscreen cannot consume the activation needed
 // by a file picker. Pointer events in the world do not need a synthetic click.
 document.addEventListener('click',event=>{if(event.isTrusted&&event.detail>0&&performance.now()-lastTouch<1000)void mobileDisplay.enter();});
+document.addEventListener('pointerup',event=>{if(event.isTrusted&&event.pointerType==='touch'&&(event.target as HTMLElement).closest('#home-menu button'))void mobileDisplay.enter();});
 export class TouchControls {
   readonly root=document.createElement('div');readonly input:TouchInput;
   enabled=touchDevice();private playing=false;private buttons=new Map<string,HTMLButtonElement>();

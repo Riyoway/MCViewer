@@ -15,6 +15,7 @@ import {touchDefaults} from './core/TouchInput';
 import type {Vec3} from './minecraft/types';
 import { createRenderer } from './core/Renderer';
 import {ViewModelRenderer} from './core/ViewModelRenderer';
+import {MobileHome} from './ui/MobileHome';
 import { AssetManager, assetUrl } from './core/AssetManager';
 import { Player,lockPointer } from './core/Player';
 import { PlayerModel } from './core/PlayerModel';
@@ -55,6 +56,7 @@ async function init() {
   const renderer=createRenderer(canvas),viewRenderer=new ViewModelRenderer(),consoleGamma=new ConsoleGamma(document.body),scene=new Scene(),camera=new PerspectiveCamera(70,innerWidth/innerHeight,.05,350);
   const fog=new Fog('#bbd0dd',35,96);scene.fog=fog;scene.background=new Color('#89b7ef');scene.add(camera);
   const assets=await AssetManager.load(),sky=new Sky(assets),model=await PlayerModel.create(assets),weather=await Weather.create(assets),audio=new AudioManager(assets.manifest.audio,{...assets.manifest.effects,...weather.data.sounds});
+  const mobileHome=new MobileHome(assets,model,$('home-player'));
   const hud=await Hud.create(assets);let lastWorldError='',lastAudioError='';
   hud.setLanguage();
   audio.sources.menu=new URL(`${import.meta.env.BASE_URL}menu/menu.ogg`,location.href).href;audio.sounds.ui_click=[new URL(`${import.meta.env.BASE_URL}menu/click.ogg`,location.href).href];audio.select('menu');
@@ -231,11 +233,11 @@ async function init() {
     const inWater=!!underwater&&camera.position.y-Math.floor(camera.position.y)<fluidHeight(assets.manifest.blocks[underwater],assets.manifest.blocks[aboveWater??0],'water');document.body.classList.toggle('underwater',inWater);
     if(inWater){fog.color.set(sky.environment?.water_fog_color??'#20417b');fog.near=0;fog.far=sky.environment?.water_fog_distance??24;}
     audio.weather(weather.consumeRainSounds(),camera,!!player?.active&&worldReady&&!inWater);
-    if(document.body.classList.contains('panorama-menu'))panorama.render(renderer,dt);else {renderer.render(scene,camera);if(player?.active&&player.perspective===0)viewRenderer.render(renderer,camera);}frames++;fpsTime+=dt;if(fpsTime>1){fps=Math.round(frames/fpsTime);frames=0;fpsTime=0;}
+    if(document.body.classList.contains('panorama-menu')){panorama.render(renderer,dt);if(ui==='home-menu')mobileHome.render(renderer,dt);}else {renderer.render(scene,camera);if(player?.active&&player.perspective===0)viewRenderer.render(renderer,camera);}frames++;fpsTime+=dt;if(fpsTime>1){fps=Math.round(frames/fpsTime);frames=0;fpsTime=0;}
     if(ui==='world-settings-menu'){$<HTMLInputElement>('time').value=String(sky.time);updateTime();}
     if(debug&&player&&world)$('debug').textContent=`${fps} FPS\nXYZ ${player.position.map(n=>n.toFixed(1)).join(' / ')}\n${world.data.name}\n${t(player.movement.flying?'Flying':player.movement.swimming?'Swimming':'Walking')}`;
   });
   await refreshList();menu('home-menu');$('menus').inert=false;$('menus').removeAttribute('aria-busy');
-  if(new URLSearchParams(location.search).has('debug'))Object.defineProperty(window,'mcViewer',{configurable:true,get:()=>({touch,player,world,renderer,viewRenderer,scene,camera,assets,sky,audio,weather,hud,config,controls,held,outline,debris,store,resourcePack,records})});
+  if(new URLSearchParams(location.search).has('debug'))Object.defineProperty(window,'mcViewer',{configurable:true,get:()=>({touch,player,world,renderer,viewRenderer,mobileHome,scene,camera,assets,sky,audio,weather,hud,config,controls,held,outline,debris,store,resourcePack,records})});
 }
 void init().catch(report);

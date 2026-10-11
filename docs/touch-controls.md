@@ -14,6 +14,21 @@ loop does not drop them. Beginning flight from the ground also applies ascent.
 
 ## Controls
 
+The phone/tablet Home uses the classic Bedrock start-screen arrangement: title
+above a central Play / Settings / Sample Worlds column, a rotating Steve preview
+on the right, and language/help controls near the bottom. It uses the pinned
+official `start_screen.json` layout and original light-button/title/glyph pixels
+(see `public/menu/bedrock/SOURCE.md`). Sample Worlds occupies the store row;
+Controls occupies the profile-button area. The viewer has no Marketplace or
+account/skin editor. Desktop retains its Java-style Home.
+
+The preview can be dragged horizontally to rotate; arrow keys also work when it
+is focused. It renders with the existing WebGL context and restores its viewport
+and scissor, without allocating another renderer. Portrait layouts fit before
+the first fullscreen request. All Home labels and preview accessibility text
+follow the five existing languages. Home touch buttons activate on release and
+discard duplicate compatibility clicks after a drag.
+
 Three Bedrock-style modes are available in Options → Controls → Touch:
 
 - **Joystick & Tap to Interact**: analog movement on the left, swipe anywhere
@@ -78,3 +93,6 @@ installed Chromium channel. Screenshots are saved in ignored `test-results/touch
 `npm run test:player-browser` additionally checks trusted-tap fullscreen ordering,
 transparent-liquid occlusion of the hand pass, and front/back player rendering.
 Its fullscreen API is emulated; physical device rotation still needs device testing.
+`npm run test:mobile-home-browser` covers the four Home viewport layouts, native
+images, player rotation, returning from settings/help/language, sample selection
+and the desktop layout. `HOME_TEST_URL` can point to a deployed URL with `?debug`.

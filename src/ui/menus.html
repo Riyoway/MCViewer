@@ -1,6 +1,7 @@
 <main id="home-menu" data-screen>
-  <div class="title-logo"><img src="/menu/logo.png" alt="Minecraft" /><h1>World Viewer</h1></div>
-  <div class="home-buttons"><button id="home-worlds">Select World</button><button id="home-samples">Sample Worlds</button><div class="button-row"><button id="home-settings">Options...</button><button id="home-help">Controls</button></div></div>
+  <div class="title-logo"><img class="desktop-home-title" src="/menu/logo.png" alt="Minecraft" /><img class="mobile-home-title" src="/menu/bedrock/title.png" alt="Minecraft" /><h1>World Viewer</h1></div>
+  <div id="home-player" tabindex="0" role="img" aria-label="Player preview. Drag to rotate."></div>
+  <div class="home-buttons"><button id="home-worlds"><span class="desktop-home-label">Select World</span><span class="mobile-home-label">Play</span></button><button id="home-samples">Sample Worlds</button><div class="button-row"><button id="home-settings"><span class="desktop-home-label">Options...</span><span class="mobile-home-label">Settings</span></button><button id="home-help">Controls</button></div></div>
   <button id="home-language" class="language-icon" aria-label="Language" title="Language"></button>
   <aside class="home-notice" aria-label="Unofficial project notice"><span>Unofficial Minecraft viewer.</span><span>Not approved by or associated with</span><span>Mojang or Microsoft.</span></aside>
   <footer><span>© Mojang AB / Microsoft</span><a href="/menu/credits.html" target="_blank" rel="noopener noreferrer">Credits & Notices</a></footer>

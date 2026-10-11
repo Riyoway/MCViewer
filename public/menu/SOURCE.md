@@ -2,3 +2,4 @@ Menu textures and bitmap fonts extracted from the user-provided Minecraft-1.12.2
 Slider track and handle use the native GuiOptionSlider 150 x 20 and 8 x 20 slices (https://github.com/WangTingZheng/mcp940/blob/master/src/minecraft/net/minecraft/client/gui/GuiOptionSlider.java).
 Inventory names in locales/*.json come from official Minecraft 1.13 language resources, with 1.21.6 translations for newer IDs. Viewer-specific menu labels are translated separately. item-names.json retains the English fallback. Regenerate with npm run ui-language.
 Touch control button/joystick images come from Mojang's official Bedrock samples. See touch/SOURCE.md and touch/LICENSE.md for the pinned version, original file paths and rights notice.
+Mobile Home title, buttons and language glyph use original Bedrock pixels. See bedrock/SOURCE.md and bedrock/LICENSE.md for their source and notice.
