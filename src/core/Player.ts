@@ -15,7 +15,7 @@ export class Player {
   readonly touch:TouchMotion={forward:0,strafe:0,jump:false,descend:false,sneak:false,sprint:false};
   get active(){return this.locked||this.touchActive;}
   get sneaking(){return this.active&&(this.keys.has('ShiftLeft')||this.keys.has('ShiftRight')||this.touch.sneak||(this.touch.descend&&!this.movement.swimming));}
-  private accumulator=0;private lastForward=-1000;private lastJump=-1000;private lastDescend=-1000;private sprintToggle=false;
+  private accumulator=0;private lastForward=-1000;private lastJump=-1000;private lastDescend=-1000;private sprintToggle=false;private jumpQueued=false;
   readonly look=new Vector3();readonly eye=new Vector3();private bob=0;
   private previous:Vec3=[0,80,0];
   private ignoreMouse=true;private mouseTime=0;
@@ -48,9 +48,9 @@ export class Player {
     window.addEventListener('blur',()=>{this.stop();if(this.locked)document.exitPointerLock?.();});
     document.addEventListener('visibilitychange',()=>{if(document.hidden){this.stop();if(this.locked)document.exitPointerLock?.();}});
   }
-  stop(){this.keys.clear();Object.assign(this.touch,{forward:0,strafe:0,jump:false,descend:false,sneak:false,sprint:false});this.movement.stop();this.accumulator=0;this.sprintToggle=false;this.lastJump=-1000;this.lastDescend=-1000;this.lastForward=-1000;}
+  stop(){this.keys.clear();Object.assign(this.touch,{forward:0,strafe:0,jump:false,descend:false,sneak:false,sprint:false});this.movement.stop();this.accumulator=0;this.sprintToggle=false;this.jumpQueued=false;this.lastJump=-1000;this.lastDescend=-1000;this.lastForward=-1000;}
   turn(x:number,y:number){if(!Number.isFinite(x)||!Number.isFinite(y))return;this.yaw-=x;this.pitch=Math.max(-Math.PI/2+.001,Math.min(Math.PI/2-.001,this.pitch-y));}
-  jumpPress(now=performance.now(),canStop=true){if(now-this.lastJump<350){if(canStop||!this.movement.flying){this.movement.flying=!this.movement.flying;this.movement.vy=0;}this.lastJump=-1000;}else this.lastJump=now;}
+  jumpPress(now=performance.now(),canStop=true){this.jumpQueued=true;if(now-this.lastJump<350){if(canStop||!this.movement.flying){this.movement.flying=!this.movement.flying;this.movement.vy=0;}this.lastJump=-1000;}else this.lastJump=now;}
   descendPress(now=performance.now()){if(this.movement.flying&&now-this.lastDescend<350){this.movement.flying=false;this.movement.vy=0;this.lastDescend=-1000;}else this.lastDescend=now;}
   lock(){return lockPointer(this.canvas);}
   update(dt:number) {
@@ -59,7 +59,7 @@ export class Player {
     const strafe=this.active?Math.max(-1,Math.min(1,this.touch.strafe+Number(this.keys.has('KeyD')||this.keys.has('ArrowRight'))-Number(this.keys.has('KeyA')||this.keys.has('ArrowLeft')))):0;
     const sprint=this.active&&(this.touch.sprint||this.sprintToggle||this.keys.has('ControlLeft')||this.keys.has('ControlRight')),sneak=this.sneaking;
     this.accumulator+=dt;
-    while(this.accumulator>=.05){this.previous=[...this.position];this.movement.tick(forward,strafe,this.yaw,this.active&&(this.touch.jump||this.keys.has('Space')),sprint,sneak,this.touchActive&&this.touchAutoJump,this.touchActive&&this.touch.descend);this.accumulator-=.05;}
+    while(this.accumulator>=.05){this.previous=[...this.position];this.movement.tick(forward,strafe,this.yaw,this.active&&(this.jumpQueued||this.touch.jump||this.keys.has('Space')),sprint,sneak,this.touchActive&&this.touchAutoJump,this.touchActive&&this.touch.descend);this.jumpQueued=false;this.accumulator-=.05;}
     const rendered=this.position.map((n,i)=>this.previous[i]+(n-this.previous[i])*this.accumulator/.05) as Vec3;
     const speed=Math.hypot(this.position[0]-this.previous[0],this.position[2]-this.previous[2])*20;
     this.model.update(dt,this.yaw,this.pitch,forward,strafe,speed,!this.motionEnabled);

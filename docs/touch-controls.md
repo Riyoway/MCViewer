@@ -4,6 +4,8 @@ The viewer detects coarse touch devices automatically and does not require
 Pointer Lock or fullscreen. Controls keep separate pointer captures for movement,
 camera and action fingers. Orientation changes, pointer cancellation, menus,
 backgrounding and focus loss release held inputs.
+Short jump taps are buffered through the next physics tick so the 20 Hz movement
+loop does not drop them. Beginning flight from the ground also applies ascent.
 
 ## Controls
 
