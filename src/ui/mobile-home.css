@@ -1,4 +1,4 @@
-.title-logo .mobile-home-title,.mobile-home-label,#home-player{display:none}
+.title-logo .mobile-home-title,.mobile-home-label,.mobile-home-skin,#home-player{display:none}
 body.touch-device:has(#home-menu:not([hidden])) #world{filter:none}
 body.touch-device:has(#home-menu:not([hidden])) #panorama-shade{display:none}
 /* Bedrock's start_screen: 150-unit central column, 32-unit rows, right paper doll.
@@ -13,18 +13,15 @@ body.touch-device:has(#home-menu:not([hidden])) #panorama-shade{display:none}
 .touch-device #home-menu .home-buttons{position:absolute;top:42%;left:calc(50% - min(37.5%,75 * var(--home-unit)));transform:none;width:calc(150 * var(--home-unit));max-width:75%;margin:0;display:flex;flex-direction:column;gap:calc(4 * var(--home-unit))}
 .touch-device #home-menu .home-buttons>.button-row{display:contents}
 .touch-device #home-menu #home-worlds{order:0}.touch-device #home-menu #home-settings{order:1}.touch-device #home-menu #home-samples{order:2}
-.touch-device #home-menu button{height:calc(28 * var(--home-unit));min-height:44px;padding:4px 8px;border-width:var(--home-unit);border-image:url('/menu/bedrock/button_borderless_light.png') 1 fill stretch;outline:var(--home-unit) solid #1e1e1e;color:#4c4c4c;text-shadow:none;box-shadow:0 calc(2 * var(--home-unit)) #0007}
+.touch-device #home-menu button{height:calc(28 * var(--home-unit));min-height:44px}
 .touch-device #menus #home-menu .home-buttons>.button-row>button{height:calc(28 * var(--home-unit))}
-.touch-device #home-menu button:hover:not(:disabled),.touch-device #home-menu button:focus-visible{border-image-source:url('/menu/bedrock/button_borderless_lighthover.png');outline-color:#fff;color:#fff}
-.touch-device #home-menu button:active:not(:disabled){border-image-source:url('/menu/bedrock/button_borderless_lightpressed.png');color:#fff;box-shadow:none}
-.touch-device #home-menu button:active .mc-text{translate:0 var(--home-unit)}
 .touch-device #home-menu button .mc-text{zoom:clamp(1.75,calc(100dvh / 170px),2)}
-.touch-device #home-menu button .mc-text{filter:none}
 .touch-device #home-menu #home-player{display:block;position:absolute;right:max(3%,env(safe-area-inset-right));bottom:calc(var(--home-bottom) + 58px);width:calc(50% - 95 * var(--home-unit));height:clamp(125px,43dvh,255px);touch-action:none;cursor:grab;outline:none}
 .touch-device #home-menu #home-player:active{cursor:grabbing}.touch-device #home-menu #home-player:focus-visible{outline:2px solid #fff}
-.touch-device #home-menu #home-help{position:fixed;right:max(5%,env(safe-area-inset-right));bottom:var(--home-bottom);width:calc(90 * var(--home-unit));height:44px}
-.touch-device #home-menu #home-language{position:absolute;top:auto;left:var(--home-edge);bottom:var(--home-bottom);width:44px;height:44px;background:none}
-.touch-device #home-menu #home-language::after{content:'';position:absolute;inset:8px;background-color:currentColor;mask:url('/menu/bedrock/language_glyph.png') center/contain no-repeat;image-rendering:pixelated}
+.touch-device #home-menu #home-help{display:none}
+.touch-device #home-menu #home-skin{display:block;position:absolute;right:max(5%,env(safe-area-inset-right));bottom:var(--home-bottom);width:calc(90 * var(--home-unit));height:44px}
+.touch-device #home-menu #home-language{position:absolute;top:auto;left:var(--home-edge);bottom:var(--home-bottom);width:44px;height:44px;background:url('/menu/language.png') center/44px 44px no-repeat}
+.touch-device #home-menu #home-language:hover,.touch-device #home-menu #home-language:focus-visible{background-image:url('/menu/language-hover.png')}
 .touch-device #home-menu .home-notice{position:absolute;left:6px;right:6px;bottom:30px;width:auto;margin:0;order:initial;font-size:10px;line-height:12px;text-align:center;pointer-events:none}
 .touch-device #home-menu .home-notice>span{display:inline}.touch-device #home-menu .home-notice>span+span::before{content:' '}
 .touch-device #home-menu .home-notice .mc-text{zoom:1}
@@ -34,7 +31,7 @@ body.touch-device:has(#home-menu:not([hidden])) #panorama-shade{display:none}
  .touch-device #home-menu .title-logo{top:10%;width:88%}
  .touch-device #home-menu .home-buttons{top:32%;left:calc(50% - min(37.5%,160px));width:75%;max-width:320px}
  .touch-device #home-menu #home-player{right:4%;width:30%;height:min(21dvh,max(68px,calc(56dvh - 250px)));max-height:180px}
- .touch-device #home-menu #home-help{right:4%;width:30%;min-width:110px}
+ .touch-device #home-menu #home-skin{right:4%;width:30%;min-width:110px}
  .touch-device #home-menu .home-notice{bottom:42px;line-height:13px;padding:0 8px}
  .touch-device #home-menu footer{align-items:end;line-height:13px;bottom:max(6px,env(safe-area-inset-bottom))}
  .touch-device #home-menu footer>span{max-width:45%}.touch-device #home-menu footer>a{text-align:right;max-width:45%}
@@ -46,3 +43,8 @@ body.touch-device:has(#home-menu:not([hidden])) #panorama-shade{display:none}
  .touch-device #home-menu #home-player{height:130px}
  .touch-device #home-menu .home-notice{font-size:8px;bottom:23px}
 }
+.touch-device .skin-layout{position:static;width:min(100%,600px);flex:1;min-height:200px;grid-template-columns:minmax(90px,30%) 1fr;gap:16px}
+.touch-device #skin-preview{height:clamp(140px,48dvh,300px)}.touch-device .skin-actions{gap:10px}.touch-device .skin-actions p{line-height:18px;font-size:12px}
+.touch-device #menus .skin-actions .option-button{height:44px;min-height:44px;padding:8px;border-width:3px;font-size:14px;line-height:20px}
+body:has(#skin-menu:not([hidden])) #world{filter:none}
+body:has(#skin-menu:not([hidden])) #panorama-shade{display:none}

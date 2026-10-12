@@ -16,11 +16,12 @@ loop does not drop them. Beginning flight from the ground also applies ascent.
 
 The phone/tablet Home uses the classic Bedrock start-screen arrangement: title
 above a central Play / Settings / Sample Worlds column, a rotating Steve preview
-on the right, and language/help controls near the bottom. It uses the pinned
-official `start_screen.json` layout and original light-button/title/glyph pixels
-(see `public/menu/bedrock/SOURCE.md`). Sample Worlds occupies the store row;
-Controls occupies the profile-button area. The viewer has no Marketplace or
-account/skin editor. Desktop retains its Java-style Home.
+on the right, and language/skin controls near the bottom. It uses the pinned
+official `start_screen.json` layout and original title pixels
+(see `public/menu/bedrock/SOURCE.md`). Buttons, hover states and the language icon
+use the same Java textures as desktop. Sample Worlds occupies the store row;
+Skin occupies the profile-button area. The viewer has no Marketplace or account
+service. Desktop retains its Java-style Home.
 
 The preview can be dragged horizontally to rotate; arrow keys also work when it
 is focused. It renders with the existing WebGL context and restores its viewport
@@ -28,6 +29,16 @@ and scissor, without allocating another renderer. Portrait layouts fit before
 the first fullscreen request. All Home labels and preview accessibility text
 follow the five existing languages. Home touch buttons activate on release and
 discard duplicate compatibility clicks after a drag.
+
+Skin is available from mobile Home and from Options on both desktop and mobile.
+Import a 64×64, legacy 64×32 or 128×128 PNG, choose Classic (Steve) or Slim (Alex),
+or restore Default Skin. The PNG and model are saved locally in IndexedDB; they
+are never uploaded. They apply to Home, the Skin preview, the first-person hand
+and front/back player views. Legacy skins use Classic. Invalid images preserve
+the current skin and show an inline explanation. Storage failure applies the
+skin for the current session. `npm run test:skin-browser` checks import, model
+selection, persistence, reset and live world changes (`SKIN_TEST_URL` overrides
+the dev URL).
 
 Three Bedrock-style modes are available in Options → Controls → Touch:
 

@@ -6,8 +6,18 @@ The skin model follows [Mojang's humanoid geometry](https://github.com/Mojang/be
 8×8×8 head, 8×12×4 torso, 4×12×4 limbs, shoulder and neck pivots,
 0.5-pixel hat and 0.25-pixel clothing inflation. Modern 64×64 skins have
 independent left limbs and clothing; legacy 64×32 skins mirror the right limbs.
+Slim uses three-pixel arms and half-pixel lower shoulders. Skin import follows
+[Minecraft's Classic/Slim PNG workflow](https://www.minecraft.net/en-us/article/what-is-minecraft-skin).
 The model uses the [official player scale of 0.9375](https://github.com/Mojang/bedrock-samples/blob/main/resource_pack/entity/player.entity.json).
 The viewer faces -Z, so skin-net side faces are mapped to that coordinate system.
+Side and cap UVs join the front without reflection; source-only checks validate
+the folded seams. 128×128 uses the same normalized skin net as 64×64. Imported
+base areas are made opaque; clothing alpha is preserved, and legacy RGB skins
+do not turn unused hat space into a solid cover. Geometry is rebuilt in place,
+retaining the world player's groups and held-item attachment.
+
+Home uses the official paper-doll defaults, starting rotation 30° and camera
+tilt -10°, from the pinned [start screen](https://github.com/Mojang/bedrock-samples/blob/46ba6ea985fb5a92d79a9419198f10dda14c199d/resource_pack/ui/start_screen.json).
 
 Head look retains the camera's pitch and heading independently of the torso.
 Legs and arms move in opposing pairs based on travelled distance; sideways

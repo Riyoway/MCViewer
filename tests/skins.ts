@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import {Mesh,Group,MeshBasicMaterial,BoxGeometry} from 'three';
+import {normalizeSkinPixels,skinDimensions,validateSkinPng} from '../src/core/Skin';
+import {PlayerModel,skinBox} from '../src/core/PlayerModel';
+for(const [w,h] of [[64,32],[64,64],[128,128]])assert(skinDimensions(w,h));
+for(const [w,h] of [[64,128],[128,64],[32,32],[256,256]])assert(!skinDimensions(w,h));
+assert.throws(()=>validateSkinPng(new TextEncoder().encode('<html>not a skin</html>')),/PNG/);
+const header=new Uint8Array(33);header.set([137,80,78,71,13,10,26,10]);header.set([73,72,68,82],12);const view=new DataView(header.buffer);view.setUint32(16,64);view.setUint32(20,64);
+assert.deepEqual(validateSkinPng(header),{width:64,height:64});view.setUint32(20,80);assert.throws(()=>validateSkinPng(header),/64×64/);
+const rgba=(w:number,h:number,alpha=0)=>{const pixels=new Uint8ClampedArray(w*h*4);for(let i=3;i<pixels.length;i+=4)pixels[i]=alpha;return pixels;};
+for(const width of [64,128]){
+ const pixels=rgba(width,width,96);normalizeSkinPixels(pixels,width,width);const alpha=(x:number,y:number)=>pixels[((y*width/64)*width+x*width/64)*4+3];
+ assert.equal(alpha(8,8),255,'The face base is opaque');assert.equal(alpha(20,20),255,'The torso base is opaque');assert.equal(alpha(20,52),255,'The modern left-leg base is opaque');
+ assert.equal(alpha(40,8),96,'The hat keeps partial alpha');assert.equal(alpha(20,36),96,'Clothing keeps partial alpha');
+}
+const legacy=rgba(64,32,255);normalizeSkinPixels(legacy,64,32);assert.equal(legacy[(8*64+40)*4+3],0,'Legacy RGB images do not produce a solid unused hat');assert.equal(legacy[(20*64+48)*4+3],255,'The legacy arm remains opaque');
+const mat=new MeshBasicMaterial(),box=skinBox(8,8,8,0,0,mat,64,64),uv=box.geometry.attributes.uv;
+assert.equal(uv.getX(1),uv.getX(21),'Front-right edge joins right side');
+assert.equal(uv.getX(8),uv.getX(20),'Front-left edge joins the top');assert.equal(uv.getY(8),uv.getY(20),'Front/top edge shares its skin-net boundary');
+const classic=PlayerModel.fromSkin(64,64,new MeshBasicMaterial(),new MeshBasicMaterial()),slim=PlayerModel.fromSkin(64,64,new MeshBasicMaterial(),new MeshBasicMaterial(),true);
+const bounds=(model:PlayerModel)=>((model.rightArm.children[0] as Mesh).geometry as BoxGeometry).parameters;
+assert.equal(bounds(classic).width,4/16);assert.equal(bounds(slim).width,3/16);assert.equal(slim.rightArm.position.y,9.5/16);
+const hd=PlayerModel.fromSkin(128,128,new MeshBasicMaterial(),new MeshBasicMaterial(),true);
+assert.deepEqual([...(hd.head.children[0] as Mesh).geometry.attributes.uv.array],[...(slim.head.children[0] as Mesh).geometry.attributes.uv.array],'HD skins use the same normalized UV net');
+const root=classic.root,hand=classic.hand,right=classic.rightArm,item=new Group();classic.rightArm.add(item);
+for(let i=0;i<4;i++)classic.setSkin(64,64,new MeshBasicMaterial(),new MeshBasicMaterial(),i%2===0);
+assert.equal(classic.root,root);assert.equal(classic.hand,hand);assert.equal(classic.rightArm,right);assert.equal(item.parent,right,'Switching skins preserves held-item attachment');
+assert.equal(classic.head.children.length,2);assert.equal(classic.rightArm.children.length,3,'Switching does not accumulate skin meshes');
+assert.equal(((classic.head.children[1] as Mesh).material as MeshBasicMaterial).transparent,true,'The outer layer blends its alpha');
+console.log('Skin checks passed: PNG dimensions, base/overlay alpha, legacy hat, folded UV seams, Classic/Slim, HD net and stable player/hand references.');

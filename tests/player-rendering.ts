@@ -5,8 +5,9 @@ import {MobileDisplay} from '../src/core/MobileDisplay';
 
 const material=new MeshBasicMaterial(),overlay=new MeshBasicMaterial();
 const cube=skinBox(8,8,8,0,0,material,64,32),uv=cube.geometry.attributes.uv;
-assert.equal(uv.getX(0),8/64,'Right head face uses the right skin region');
-assert.equal(uv.getX(4),24/64,'Left head face uses the left skin region');
+assert.equal(uv.getX(0),0/64,'Right head face uses the right skin region');
+assert.equal(uv.getX(4),16/64,'Left head face uses the left skin region');
+assert.equal(uv.getX(8),16/64,'Top face joins the front without a horizontal reflection');
 assert.equal(uv.getX(20),16/64,'Front face retains the skin face, not the back');
 const normal=skinBox(4,12,4,40,16,material,64,32),mirror=skinBox(4,12,4,40,16,material,64,32,true);
 const normalUv=normal.geometry.attributes.uv,mirrorUv=mirror.geometry.attributes.uv;

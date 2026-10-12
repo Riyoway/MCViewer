@@ -20,10 +20,11 @@
     "fluid-assets": "tsx scripts/fluid-assets.ts",
     "menu-assets": "tsx scripts/viewer-menu-assets.ts",
     "viewer-data": "tsx scripts/viewer-data.ts",
-    "test": "tsc --noEmit && tsx tests/core.ts && tsx tests/touch.ts && tsx tests/player-rendering.ts && tsx tests/language.ts && tsc --project tsconfig.hosting.json && tsx tests/hosting.ts",
+    "test": "tsc --noEmit && tsx tests/core.ts && tsx tests/touch.ts && tsx tests/player-rendering.ts && tsx tests/skins.ts && tsx tests/language.ts && tsc --project tsconfig.hosting.json && tsx tests/hosting.ts",
     "test:touch-browser": "node tests/touch-browser.cjs",
     "test:player-browser": "node tests/player-browser.cjs",
     "test:mobile-home-browser": "node tests/mobile-home-browser.cjs",
+    "test:skin-browser": "node tests/skin-browser.cjs",
     "test:assets": "tsx tests/check.ts && tsx tests/building.ts && tsx tests/viewer.ts && tsx tests/language.ts && tsc --project tsconfig.hosting.json && tsx tests/hosting.ts",
     "assets:pin": "tsx scripts/pin-assets.ts"
   },

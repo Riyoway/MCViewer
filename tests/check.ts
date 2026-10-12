@@ -198,8 +198,8 @@ for(const type of ['single','left','right'])for(const facing of ['north','east',
   }else assert.equal(chest.elements[0].to[0]-chest.elements[0].from[0],15/16,'Double-chest halves meet without a gap');
 }
 const arm=skinBox(4,12,4,40,16,new MeshBasicMaterial(),64,64),armUv=arm.geometry.attributes.uv;
-assert.equal(armUv.getX(8),44/64);assert.equal(armUv.getY(8),1-20/64,'Shoulder cap preserves the native skin orientation');
-assert.equal(armUv.getX(12),48/64);assert.equal(armUv.getY(12),1-16/64,'Fist cap is separate from the shoulder');arm.geometry.dispose();
+assert.equal(armUv.getX(8),48/64);assert.equal(armUv.getY(8),1-20/64,'Shoulder cap preserves the native skin orientation');
+assert.equal(armUv.getX(12),52/64);assert.equal(armUv.getY(12),1-16/64,'Fist cap is separate from the shoulder');arm.geometry.dispose();
 const neighbor=new Voxels();neighbor.set(15,0,0,stone);neighbor.set(16,0,0,stone);assert.equal(meshChunk(neighbor,packs.blocks,[0,0,0]).opaque.index.length,30);
 const leaves=await packs.block('vanilla',{Name:'minecraft:oak_leaves'});assert.equal(packs.blocks[leaves].occludes,false);
 const canopy=new Voxels();canopy.set(0,0,0,stone);canopy.set(1,0,0,leaves);assert.equal(meshChunk(canopy,packs.blocks,[0,0,0]).opaque.index.length,66,'Leaves preserve the opaque faces visible through their holes');

@@ -26,6 +26,13 @@ body.dirt-menu #menus{background:#404040 url('/menu/dirt.png') repeat;background
 .options-grid label .mc-text{pointer-events:none}.options-grid input[type=range]{appearance:none;-webkit-appearance:none;opacity:0;background:transparent;accent-color:initial;z-index:3}.options-grid input[type=range]::-webkit-slider-runnable-track{height:20px;background:transparent}.options-grid input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:8px;height:20px;border:0;border-radius:0;background:none;box-shadow:none}.options-grid input[type=range]::-moz-range-track{height:20px;background:transparent}.options-grid input[type=range]::-moz-range-thumb{width:8px;height:20px;border:0;border-radius:0;background:none}.options-grid .option-button:hover,.options-grid .option-button:focus-visible{border-image-source:url('/menu/hover.png')!important;outline:0}
 
 .bitmap-glyphs{display:block;background-color:currentColor;mask-repeat:no-repeat;mask-size:100% 100%;image-rendering:pixelated}.mc-text{filter:drop-shadow(1px 1px color-mix(in srgb,currentColor 25%,black));text-shadow:none}
+.skin-layout{position:absolute;top:45px;bottom:42px;left:calc(50% - 155px);width:310px;display:grid;grid-template-columns:100px 200px;gap:10px;align-items:center}
+#skin-preview{height:180px;touch-action:none;outline:none;cursor:grab}#skin-preview:active{cursor:grabbing}#skin-preview:focus-visible{outline:1px solid #fff}
+.skin-actions{display:grid;gap:6px}.skin-actions p{margin:0;overflow-wrap:anywhere;line-height:12px}.skin-actions>label{position:relative}
+#skin-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#menus .skin-actions .option-button{border:2px solid transparent;border-image:url('/menu/button.png') 2 fill stretch;height:20px;padding:2px 4px;font-size:8px;color:#fff;text-align:center;line-height:12px;cursor:pointer}
+#menus .skin-actions .option-button:hover,#menus .skin-actions .option-button:focus-visible{border-image-source:url('/menu/hover.png');color:#ffffa0;outline:none}
+#menus .skin-actions .option-button[aria-disabled=true]{border-image-source:url('/menu/disabled.png');color:#a0a0a0;cursor:default}
 
 #menus .option-button:hover,#menus .option-button:focus-visible{color:#ffffa0}
 

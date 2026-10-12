@@ -23,8 +23,8 @@ export function nativeOptions(root:HTMLElement){
     const name=label.dataset.optionName??Array.from(label.childNodes).filter(node=>node!==field).map(node=>node.textContent).join('').trim();
     for(const node of [...label.childNodes])if(node!==field)node.remove();
     const text=document.createElement('span');text.className='option-text';label.append(text);field.hidden=true;label.tabIndex=0;label.setAttribute('role','button');label.classList.add('option-button');
-    const update=()=>{const value=field instanceof HTMLSelectElement?field.selectedOptions[0]?.textContent??'':t(field.checked?'ON':'OFF'),caption=`${t(name)}: ${value}`;if(text.textContent!==caption)text.textContent=caption;if(field instanceof HTMLInputElement)label.setAttribute('aria-pressed',String(field.checked));};
-    const change=()=>{if(field instanceof HTMLSelectElement)field.selectedIndex=(field.selectedIndex+1)%field.options.length;else field.checked=!field.checked;field.dispatchEvent(new Event('input',{bubbles:true}));update();};
+    const update=()=>{const value=field instanceof HTMLSelectElement?field.selectedOptions[0]?.textContent??'':t(field.checked?'ON':'OFF'),caption=`${t(name)}: ${value}`;if(text.textContent!==caption)text.textContent=caption;label.setAttribute('aria-disabled',String(field.disabled));label.tabIndex=field.disabled?-1:0;if(field instanceof HTMLInputElement)label.setAttribute('aria-pressed',String(field.checked));};
+    const change=()=>{if(field.disabled)return;if(field instanceof HTMLSelectElement)field.selectedIndex=(field.selectedIndex+1)%field.options.length;else field.checked=!field.checked;field.dispatchEvent(new Event('input',{bubbles:true}));update();};
     label.addEventListener('click',event=>{event.preventDefault();change();});label.addEventListener('keydown',event=>{if(event.code==='Space'||event.code==='Enter'){event.preventDefault();change();}});refresh.push(update);update();
   }
   return ()=>refresh.forEach(update=>update());
