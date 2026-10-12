@@ -47,7 +47,7 @@ export class MobileHome {
     if(!editing&&(!document.body.classList.contains('touch-device')||this.element.closest<HTMLElement>('[data-screen]')?.hidden))return;
     const rect=(editing?this.skinPreview:this.element).getBoundingClientRect(),canvas=renderer.domElement.getBoundingClientRect();
     if(!rect.width||!rect.height||!canvas.width||!canvas.height)return;
-    this.model.update(dt,0,0,0,0,0,true);this.model.root.rotation.y=this.yaw;
+    this.model.update(dt,0,0);this.model.root.rotation.y=this.yaw;
     const aspect=rect.width/rect.height;this.camera.left=-1.05*aspect;this.camera.right=1.05*aspect;this.camera.top=1.05;this.camera.bottom=-1.05;this.camera.updateProjectionMatrix();
     const size=renderer.getSize(new Vector2()),viewport=renderer.getViewport(new Vector4()),scissor=renderer.getScissor(new Vector4()),test=renderer.getScissorTest(),clear=renderer.autoClear;
     try {

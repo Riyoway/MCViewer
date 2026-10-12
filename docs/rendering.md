@@ -19,12 +19,28 @@ retaining the world player's groups and held-item attachment.
 Home uses the official paper-doll defaults, starting rotation 30° and camera
 tilt -10°, from the pinned [start screen](https://github.com/Mojang/bedrock-samples/blob/46ba6ea985fb5a92d79a9419198f10dda14c199d/resource_pack/ui/start_screen.json).
 
-Head look retains the camera's pitch and heading independently of the torso.
-Legs and arms move in opposing pairs based on travelled distance; sideways
-travel turns the torso rather than rolling limbs. Crouching bends the torso,
-and held items and attacks change the right-arm pose. Idle arm motion and attack
-curves reference [Mojang's player animations](https://github.com/Mojang/bedrock-samples/blob/main/resource_pack/animations/player.animation.json).
-The viewer keeps its Java-style distance-based walk timing and crouch pose;
+The walk cycle follows Java 1.12's `EntityLivingBase.travel` and `ModelBiped`:
+each 20 Hz physics tick measures actual horizontal displacement, caps its
+four-times-distance target at 1, eases the swing amount by 0.4, and accumulates
+that eased amount as the phase. Rendering interpolates the previous/current
+amount and phase, with a 0.6662 phase multiplier. Arms swing with amplitude 1;
+legs use 1.4. Sprinting and creative flight share the cap, about 2.12 full cycles
+per second. Vertical-only flight and blocked movement contribute no distance.
+See [the native movement update](https://github.com/WangTingZheng/mcp940/blob/master/src/minecraft/net/minecraft/entity/EntityLivingBase.java),
+[biped pose](https://github.com/WangTingZheng/mcp940/blob/master/src/minecraft/net/minecraft/client/model/ModelBiped.java)
+and [render interpolation](https://github.com/WangTingZheng/mcp940/blob/master/src/minecraft/net/minecraft/client/renderer/entity/RenderLivingBase.java).
+
+The same tick tracks head and body angles. Small stationary looks leave the
+torso in place; movement turns it by 0.3 toward travel, with the native 95-degree
+backward check, 75-degree head limit and extra 0.2 correction beyond 50 degrees.
+Wrapped interpolation crosses ±180 degrees smoothly. The head is independent
+of the torso's crouch and attack transforms and applies yaw before pitch,
+so looking sideways and upward keeps the intended world direction. Idle arms
+use the native 0.09/0.067 tick frequencies. The neck, torso and shoulders have
+independent native pivots, with model X/Y rotations converted into the viewer's
+right/up axes. Crouching lowers the neck and shoulders without sinking the feet;
+the arm holding offset and attack arc follow the biped pose in the same axes.
+The viewer keeps its Java-style pose;
 this is not the complete modern Bedrock animation controller (equipment,
 elytra, crawling and sprint-swimming states are not implemented).
 

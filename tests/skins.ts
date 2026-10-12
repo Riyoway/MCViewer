@@ -19,7 +19,7 @@ assert.equal(uv.getX(1),uv.getX(21),'Front-right edge joins right side');
 assert.equal(uv.getX(8),uv.getX(20),'Front-left edge joins the top');assert.equal(uv.getY(8),uv.getY(20),'Front/top edge shares its skin-net boundary');
 const classic=PlayerModel.fromSkin(64,64,new MeshBasicMaterial(),new MeshBasicMaterial()),slim=PlayerModel.fromSkin(64,64,new MeshBasicMaterial(),new MeshBasicMaterial(),true);
 const bounds=(model:PlayerModel)=>((model.rightArm.children[0] as Mesh).geometry as BoxGeometry).parameters;
-assert.equal(bounds(classic).width,4/16);assert.equal(bounds(slim).width,3/16);assert.equal(slim.rightArm.position.y,9.5/16);
+assert.equal(bounds(classic).width,4/16);assert.equal(bounds(slim).width,3/16);assert.equal(slim.rightArm.position.y,1.5-2.5/16);
 const hd=PlayerModel.fromSkin(128,128,new MeshBasicMaterial(),new MeshBasicMaterial(),true);
 assert.deepEqual([...(hd.head.children[0] as Mesh).geometry.attributes.uv.array],[...(slim.head.children[0] as Mesh).geometry.attributes.uv.array],'HD skins use the same normalized UV net');
 const root=classic.root,hand=classic.hand,right=classic.rightArm,item=new Group();classic.rightArm.add(item);

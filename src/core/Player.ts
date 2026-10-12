@@ -54,15 +54,15 @@ export class Player {
   descendPress(now=performance.now()){if(this.movement.flying&&now-this.lastDescend<350){this.movement.flying=false;this.movement.vy=0;this.lastDescend=-1000;}else this.lastDescend=now;}
   lock(){return lockPointer(this.canvas);}
   update(dt:number) {
-    if(dt===0)this.previous=[...this.position];
+    if(dt===0){this.previous=[...this.position];this.model.resetPose(this.yaw,this.pitch);}
     const forward=this.active?Math.max(-1,Math.min(1,this.touch.forward+Number(this.keys.has('KeyW')||this.keys.has('ArrowUp'))-Number(this.keys.has('KeyS')||this.keys.has('ArrowDown')))):0;
     const strafe=this.active?Math.max(-1,Math.min(1,this.touch.strafe+Number(this.keys.has('KeyD')||this.keys.has('ArrowRight'))-Number(this.keys.has('KeyA')||this.keys.has('ArrowLeft')))):0;
     const sprint=this.active&&(this.touch.sprint||this.sprintToggle||this.keys.has('ControlLeft')||this.keys.has('ControlRight')),sneak=this.sneaking;
     this.accumulator+=dt;
-    while(this.accumulator>=.05){this.previous=[...this.position];this.movement.tick(forward,strafe,this.yaw,this.active&&(this.jumpQueued||this.touch.jump||this.keys.has('Space')),sprint,sneak,this.touchActive&&this.touchAutoJump,this.touchActive&&this.touch.descend);this.jumpQueued=false;this.accumulator-=.05;}
+    while(this.accumulator+1e-10>=.05){this.previous=[...this.position];this.movement.tick(forward,strafe,this.yaw,this.active&&(this.jumpQueued||this.touch.jump||this.keys.has('Space')),sprint,sneak,this.touchActive&&this.touchAutoJump,this.touchActive&&this.touch.descend);this.model.tick(this.yaw,this.pitch,this.position[0]-this.previous[0],this.position[2]-this.previous[2]);this.jumpQueued=false;this.accumulator=Math.max(0,this.accumulator-.05);}
     const rendered=this.position.map((n,i)=>this.previous[i]+(n-this.previous[i])*this.accumulator/.05) as Vec3;
     const speed=Math.hypot(this.position[0]-this.previous[0],this.position[2]-this.previous[2])*20;
-    this.model.update(dt,this.yaw,this.pitch,forward,strafe,speed,!this.motionEnabled,sneak,this.movement.flying,this.position[0]-this.previous[0],this.position[2]-this.previous[2]);
+    this.model.update(dt,this.yaw,this.pitch,sneak,this.movement.flying,this.accumulator/.05);
     this.viewModel.scale.x=this.touchActive?Math.min(1,this.camera.aspect/(16/9)):1;
     this.model.root.position.set(...rendered);this.model.root.visible=this.perspective!==0;this.model.hand.visible=this.active&&this.perspective===0;
     this.bob+=speed*dt*2.3;const amount=this.motionEnabled&&this.movement.grounded?Math.min(1,speed/4.3):0;

@@ -36,6 +36,34 @@ const fs=require('node:fs');fs.mkdirSync('test-results/player',{recursive:true})
   assert.deepEqual(probe.center.slice(0,3),[255,0,0],'Water in front of the camera cannot tint or reveal through a held block');
   assert(probe.outside[2]>probe.outside[0],'The transparent world is still visible around the block');
   assert.equal(probe.autoClear,true,'World clearing is restored after the hand pass');
+  const animation=await page.evaluate(()=>{
+   const {player:p}=window.mcViewer,model=p.model,collision=p.collision,movementCollision=p.movement.collision;
+   const tick=model.tick.bind(model),physics=p.movement.tick.bind(p.movement),poses=[];
+   const empty={blocks:[],voxels:{get:()=>0},loaded:()=>true,move:(position,x,z)=>{position[0]+=x;position[2]+=z;},vertical:(position,y)=>{position[1]+=y;return false;},overlaps:()=>false,point:()=>false};
+   try{
+    p.collision=p.movement.collision=empty;
+    for(const fps of [30,60,144]){
+     p.stop();p.position.splice(0,3,0,80,0);p.yaw=p.pitch=0;p.movement.flying=true;p.touchActive=true;p.touch.forward=1;p.touch.sprint=true;p.update(0);
+     let ticks=0;model.tick=(...args)=>{ticks++;tick(...args);};
+     for(let frame=0;frame<fps*2;frame++)p.update(1/fps);
+     model.update(0,p.yaw,p.pitch,false,true,1);
+     poses.push({fps,ticks,leg:model.rightLeg.rotation.x,head:model.head.rotation.y});
+    }
+    // Vertical-only flight still moves the player but must not generate a stride.
+    p.stop();p.position.splice(0,3,0,80,0);p.movement.flying=true;p.touch.jump=true;p.update(0);
+    for(let frame=0;frame<120;frame++)p.update(1/60);
+    model.update(0,p.yaw,p.pitch,false,true,1);
+    const vertical={height:p.position[1]-80,leg:model.rightLeg.rotation.x};
+    // Actual blocked displacement, rather than key input or intended velocity, drives limbs.
+    p.stop();p.movement.flying=true;p.touch.forward=1;p.update(0);p.movement.tick=()=>{};
+    for(let frame=0;frame<60;frame++)p.update(1/60);
+    return {poses,vertical,blockedLeg:model.rightLeg.rotation.x};
+   }finally{model.tick=tick;p.movement.tick=physics;p.collision=collision;p.movement.collision=movementCollision;p.stop();p.movement.flying=true;p.position.splice(0,3,...window.mcViewer.world.data.spawn);p.position[1]+=5;p.update(0);}
+  });
+  assert(animation.poses.every(p=>p.ticks===40),'Every rendering rate advances the native 20 Hz animation clock');
+  assert(animation.poses.every(p=>Math.abs(p.leg-animation.poses[0].leg)<1e-10),'30/60/144 FPS render the same fast-flight stride');
+  assert(animation.vertical.height>5&&animation.vertical.leg===0,'Ascending in creative flight does not run in place');
+  assert.equal(Math.abs(animation.blockedLeg),0,'Movement keys with no actual travel keep the legs still');
   assert.equal(await page.evaluate(()=>window.mcViewer.hud.pick('oak_planks')),true);
   await page.waitForFunction(()=>window.mcViewer.held.thirdPerson.children.length===1);
   assert.equal(await page.evaluate(()=>{const v=window.mcViewer;return v.held.thirdPerson.parent===v.player.model.rightArm&&v.held.thirdPerson.children[0].material.depthTest;}),true,'Third-person item follows the right hand and respects world depth');
@@ -44,6 +72,6 @@ const fs=require('node:fs');fs.mkdirSync('test-results/player',{recursive:true})
   await page.evaluate(()=>{window.mcViewer.player.perspective=1;window.mcViewer.player.pitch=-.15;});
   await page.waitForTimeout(400);await page.screenshot({path:'test-results/player/back.png'});
   assert.equal(await page.evaluate(()=>{const p=window.mcViewer.player;return p.model.root.visible&&!p.model.hand.visible&&!window.mcViewer.held.root.visible&&window.mcViewer.viewRenderer.camera.children.includes(p.viewModel);}),true);
-  assert.deepEqual(errors,[]);console.log(JSON.stringify({fullscreenSequence:true,heldWaterOcclusion:true,frontAndBack:true,errors}));
+  assert.deepEqual(errors,[]);console.log(JSON.stringify({fullscreenSequence:true,heldWaterOcclusion:true,frontAndBack:true,nativeAnimation:animation,errors}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
