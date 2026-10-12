@@ -2,6 +2,12 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {languages,validLocale,translate,type Catalog} from '../src/ui/Language.ts';
 import {translations} from '../scripts/ui-translations.ts';
+import {seasonalLogo} from '../src/ui/SeasonalLogo.ts';
+
+for(let month=0;month<12;month++){
+  const expected=['logo.png','logo.png','logo-spring.png','logo-spring.png','logo-spring.png','logo-summer.png','logo-summer.png','logo-summer.png','logo.png','logo.png','logo.png','logo.png'][month];
+  for(const day of [1,new Date(2026,month+1,0).getDate()])assert.equal(seasonalLogo(new Date(2026,month,day)),expected);
+}
 
 const names=JSON.parse(await readFile('public/menu/item-names.json','utf8'));
 const catalogs:Record<string,Catalog>={};

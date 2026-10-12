@@ -16,6 +16,7 @@ import type {Vec3} from './minecraft/types';
 import { createRenderer } from './core/Renderer';
 import {ViewModelRenderer} from './core/ViewModelRenderer';
 import {MobileHome} from './ui/MobileHome';
+import {seasonalLogo} from './ui/SeasonalLogo';
 import {SkinManager} from './viewer/SkinManager';
 import type {SkinModel} from './core/Skin';
 import { AssetManager, assetUrl } from './core/AssetManager';
@@ -35,6 +36,9 @@ import {soundGroup} from './minecraft/BlockState';
 
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 $('menus').innerHTML=menuMarkup;
+function refreshHomeLogo(){const image=$<HTMLImageElement>('home-logo'),source=`${import.meta.env.BASE_URL}menu/${seasonalLogo()}`;if(image.getAttribute('src')!==source)image.src=source;}
+refreshHomeLogo();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshHomeLogo();});
 $('menus').inert=true;$('menus').setAttribute('aria-busy','true');
 document.body.classList.add('panorama-menu');
 document.title='Minecraft World Viewer';
@@ -49,7 +53,7 @@ if(!['clear','rain','thunder','snow'].includes(config.weather))config.weather='c
 if(!['joystick-tap','dpad-tap','joystick-crosshair'].includes(config.touchMode))config.touchMode=touchDefaults.touchMode;
 let touch:TouchControls|undefined;
 let world:World|null=null,player:Player|null=null,selected='',entered=false,request=0,ui='home-menu',settingsReturn='home-menu',debug=false,worldReady=false,defaultWorldName=true;
-function menu(id:string){ui=id;touch?.setScreen(id);if(id!=='playing'){document.body.classList.remove('playing');$('hud').hidden=true;$('menus').inert=false;player?.stop();}document.querySelectorAll<HTMLElement>('[data-screen]').forEach(panel=>panel.hidden=panel.id!==id);const panorama=!entered&&['home-menu','skin-menu','settings-menu','video-menu','sound-menu','controls-menu','touch-menu','world-settings-menu','help-menu','language-menu'].includes(id);document.body.classList.toggle('panorama-menu',panorama);document.body.classList.toggle('dirt-menu',!panorama&&(!entered||['map-menu','add-menu','loading-menu','pack-menu','delete-menu'].includes(id)));document.body.classList.toggle('pause-background',entered&&!document.body.classList.contains('dirt-menu'));}
+function menu(id:string){if(id==='home-menu')refreshHomeLogo();ui=id;touch?.setScreen(id);if(id!=='playing'){document.body.classList.remove('playing');$('hud').hidden=true;$('menus').inert=false;player?.stop();}document.querySelectorAll<HTMLElement>('[data-screen]').forEach(panel=>panel.hidden=panel.id!==id);const panorama=!entered&&['home-menu','skin-menu','settings-menu','video-menu','sound-menu','controls-menu','touch-menu','world-settings-menu','help-menu','language-menu'].includes(id);document.body.classList.toggle('panorama-menu',panorama);document.body.classList.toggle('dirt-menu',!panorama&&(!entered||['map-menu','add-menu','loading-menu','pack-menu','delete-menu'].includes(id)));document.body.classList.toggle('pause-background',entered&&!document.body.classList.contains('dirt-menu'));}
 function report(cause:unknown){console.warn('[World Viewer]',cause instanceof Event?'Unable to load an image.':cause);}
 async function init() {
   const preferred=savedLanguage();await loadLanguage('en');bindLanguage(document.body);if(preferred!=='en'){try{await loadLanguage(preferred);renderLanguage(document.body);}catch(cause){report(cause);}}

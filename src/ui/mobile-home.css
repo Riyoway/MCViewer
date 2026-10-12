@@ -1,15 +1,12 @@
-.title-logo .mobile-home-title,.mobile-home-label,.mobile-home-skin,#home-player{display:none}
+.mobile-home-label,.mobile-home-skin,#home-player{display:none}
 body.touch-device:has(#home-menu:not([hidden])) #world{filter:none}
 body.touch-device:has(#home-menu:not([hidden])) #panorama-shade{display:none}
 /* Bedrock's start_screen: 150-unit central column, 32-unit rows, right paper doll.
    Scale by available height, with a readable portrait fallback before fullscreen. */
 .touch-device #home-menu{--home-unit:clamp(1.35px,calc(100dvh / 270),2px);--home-edge:max(12px,env(safe-area-inset-left));--home-bottom:max(64px,calc(100dvh * .12));display:block;overflow:hidden;padding:0;gap:0}
-.touch-device #home-menu .desktop-home-title,.touch-device #home-menu .desktop-home-label{display:none}
-.touch-device #home-menu .mobile-home-title,.touch-device #home-menu .mobile-home-label{display:inline-block}
-.touch-device #home-menu .title-logo{position:absolute;left:50%;top:12%;transform:translateX(-50%);width:min(60%,calc(274 * var(--home-unit)));margin:0}
-.touch-device #home-menu .title-logo .mobile-home-title{display:block;width:100%;height:auto}
-.touch-device #home-menu .title-logo h1{font-size:12px;line-height:18px;margin:4px 0 0}
-.touch-device #home-menu .title-logo h1 .mc-text{zoom:1.5}
+.touch-device #home-menu .desktop-home-label{display:none}
+.touch-device #home-menu .mobile-home-label{display:inline-block}
+.touch-device #home-menu .title-logo{position:absolute;left:50%;top:8%;transform:translateX(-50%);width:min(60%,calc(274 * var(--home-unit)));margin:0}
 .touch-device #home-menu .home-buttons{position:absolute;top:42%;left:calc(50% - min(37.5%,75 * var(--home-unit)));transform:none;width:calc(150 * var(--home-unit));max-width:75%;margin:0;display:flex;flex-direction:column;gap:calc(4 * var(--home-unit))}
 .touch-device #home-menu .home-buttons>.button-row{display:contents}
 .touch-device #home-menu #home-worlds{order:0}.touch-device #home-menu #home-settings{order:1}.touch-device #home-menu #home-samples{order:2}

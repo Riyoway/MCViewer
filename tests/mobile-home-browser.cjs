@@ -6,6 +6,7 @@ const fs=require('node:fs');fs.mkdirSync('test-results/home',{recursive:true});
  try{
   const errors=[],bad=[],url=process.env.HOME_TEST_URL||'http://127.0.0.1:5180/?debug';
   const mobile=await browser.newPage({viewport:{width:844,height:390},hasTouch:true,isMobile:true,deviceScaleFactor:2});
+  await mobile.clock.setFixedTime(new Date('2026-10-12T12:00:00+09:00'));
   mobile.on('pageerror',e=>errors.push(e.message));mobile.on('response',r=>{if(r.status()>=400)bad.push([r.status(),r.url()]);});
   await mobile.addInitScript(()=>{
    localStorage.setItem('world-settings',JSON.stringify({volume:0,effects:0}));
@@ -15,7 +16,10 @@ const fs=require('node:fs');fs.mkdirSync('test-results/home',{recursive:true});
   await mobile.locator('#home-settings').tap();await mobile.locator('#settings-menu').waitFor({state:'visible',timeout:5000});await mobile.locator('#settings-back').tap();
   const labels=()=>mobile.locator('#home-worlds').innerText();
   assert.equal(await labels(),'Play');assert.equal(await mobile.locator('#home-settings').innerText(),'Settings');
-  await mobile.locator('.mobile-home-title').evaluate(img=>img.decode());
+  await mobile.locator('#home-logo').evaluate(img=>img.decode());
+  assert.equal(await mobile.locator('.title-logo img').count(),1);
+  assert.equal(await mobile.locator('.title-logo h1').count(),0);
+  assert.equal(await mobile.locator('#home-logo').evaluate(img=>new URL(img.src).pathname),'/menu/logo.png');
   for(const [name,viewport] of [['landscape',{width:844,height:390}],['portrait',{width:390,height:844}],['small-portrait',{width:320,height:568}],['short-landscape',{width:640,height:300}]]){
    await mobile.setViewportSize(viewport);await mobile.waitForTimeout(300);
    const layout=await mobile.locator('#home-menu').evaluate(home=>{
@@ -24,6 +28,9 @@ const fs=require('node:fs');fs.mkdirSync('test-results/home',{recursive:true});
    });
    assert(layout.every(r=>r.inside),`${name}: ${JSON.stringify(layout)}`);
    const box=id=>layout.find(r=>r.selector===id),play=box('#home-worlds'),settings=box('#home-settings'),samples=box('#home-samples'),doll=box('#home-player');
+   assert(box('.title-logo').bottom<=play.y,`${name}: Logo does not overlap Play`);
+   const logo=await mobile.locator('#home-logo').evaluate(img=>{const r=img.getBoundingClientRect();return {width:img.naturalWidth,height:img.naturalHeight,ratio:r.width/r.height};});
+   assert.equal(logo.width,999);assert.equal(logo.height,297);assert(Math.abs(logo.ratio-999/297)<.01,'Logo preserves its aspect ratio');
    assert(play.bottom<=settings.y&&settings.bottom<=samples.y,'Native Play / Settings / Samples order');
    assert(play.height>=44&&settings.height>=44&&samples.height>=44,'Touch targets stay usable');
    assert(samples.right<=doll.x||samples.bottom<=doll.y||doll.bottom<=play.y,`${name}: Player preview does not overlap main buttons ${JSON.stringify(layout)}`);
@@ -46,11 +53,22 @@ const fs=require('node:fs');fs.mkdirSync('test-results/home',{recursive:true});
   await mobile.screenshot({path:'test-results/home/japanese.png'});
   await mobile.locator('#home-worlds').tap();await mobile.locator('#map-menu').waitFor({state:'visible'});await mobile.locator('#worlds-back').tap();
   await mobile.locator('#home-samples').tap();await mobile.locator('#maps [role=option]').first().waitFor({timeout:60000});assert.equal(await mobile.locator('#maps [role=option]').count(),14);
-  const desktop=await browser.newPage({viewport:{width:960,height:540}});await desktop.goto(url);await desktop.waitForFunction(()=>window.mcViewer,{timeout:90000});
-  assert.equal(await desktop.locator('#home-worlds').innerText(),'Select World');assert.equal(await desktop.locator('#home-settings').innerText(),'Options...');assert.equal(await desktop.locator('#home-player').isVisible(),false);assert.equal(await desktop.locator('.mobile-home-title').isVisible(),false);
+  const desktop=await browser.newPage({viewport:{width:960,height:540}});await desktop.clock.setFixedTime(new Date('2026-10-12T12:00:00+09:00'));await desktop.goto(url);await desktop.waitForFunction(()=>window.mcViewer,{timeout:90000});
+  assert.equal(await desktop.locator('#home-worlds').innerText(),'Select World');assert.equal(await desktop.locator('#home-settings').innerText(),'Options...');assert.equal(await desktop.locator('#home-player').isVisible(),false);
+  assert.equal(await desktop.locator('.title-logo img').count(),1);assert.equal(await desktop.locator('.title-logo h1').count(),0);
+  assert.equal(await desktop.locator('#home-logo').evaluate(img=>new URL(img.src).pathname),'/menu/logo.png');
+  const desktopLogo=await desktop.locator('.title-logo').boundingBox(),desktopPlay=await desktop.locator('#home-worlds').boundingBox();assert(desktopLogo.y+desktopLogo.height<=desktopPlay.y,'Desktop logo does not overlap buttons');
   const desktopTexture=await desktop.locator('#home-worlds').evaluate(button=>getComputedStyle(button).borderImageSource),mobileTexture=await mobile.locator('#home-worlds').evaluate(button=>getComputedStyle(button).borderImageSource);
   assert.equal(new URL(mobileTexture.match(/url\(["']?(.*?)["']?\)/)[1]).pathname,new URL(desktopTexture.match(/url\(["']?(.*?)["']?\)/)[1]).pathname,'Home uses the same button texture on phone and desktop');
   await desktop.screenshot({path:'test-results/home/desktop.png'});
-  assert.deepEqual(errors,[]);assert.deepEqual(bad,[]);console.log(JSON.stringify({home:true,viewports:4,nativeTextures:true,rotatingPlayer:true,menuActions:true,japanese:true,desktop:true,errors,bad}));
+  await mobile.locator('#worlds-back').tap();
+  for(const [date,file,season]of[['2026-03-01','logo-spring.png','spring'],['2026-06-01','logo-summer.png','summer'],['2026-09-01','logo.png','autumn'],['2026-12-01','logo.png','winter']]){
+   for(const page of [mobile,desktop]){
+    await page.clock.setFixedTime(new Date(date+'T12:00:00+09:00'));await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForFunction(file=>new URL(document.getElementById('home-logo').src).pathname==='/menu/'+file,file);await page.locator('#home-logo').evaluate(img=>img.decode());
+   }
+   await mobile.screenshot({path:`test-results/home/logo-${season}.png`});
+  }
+  assert.deepEqual(errors,[]);assert.deepEqual(bad,[]);console.log(JSON.stringify({home:true,viewports:4,seasonalLogos:true,nativeTextures:true,rotatingPlayer:true,menuActions:true,japanese:true,desktop:true,errors,bad}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
