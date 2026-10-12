@@ -13,7 +13,7 @@ body.touch-device:has(#home-menu:not([hidden])) #panorama-shade{display:none}
 .touch-device #home-menu button{height:calc(28 * var(--home-unit));min-height:44px}
 .touch-device #menus #home-menu .home-buttons>.button-row>button{height:calc(28 * var(--home-unit))}
 .touch-device #home-menu button .mc-text{zoom:clamp(1.75,calc(100dvh / 170px),2)}
-.touch-device #home-menu #home-player{display:block;position:absolute;right:max(3%,env(safe-area-inset-right));bottom:calc(var(--home-bottom) + 58px);width:calc(50% - 95 * var(--home-unit));height:clamp(125px,43dvh,255px);touch-action:none;cursor:grab;outline:none}
+.touch-device #home-menu #home-player{display:block;position:absolute;right:max(5%,env(safe-area-inset-right));bottom:calc(var(--home-bottom) + 58px);width:calc(90 * var(--home-unit));height:clamp(125px,43dvh,255px);touch-action:none;cursor:grab;outline:none}
 .touch-device #home-menu #home-player:active{cursor:grabbing}.touch-device #home-menu #home-player:focus-visible{outline:2px solid #fff}
 .touch-device #home-menu #home-help{display:none}
 .touch-device #home-menu #home-skin{display:block;position:absolute;right:max(5%,env(safe-area-inset-right));bottom:var(--home-bottom);width:calc(90 * var(--home-unit));height:44px}
@@ -27,7 +27,7 @@ body.touch-device:has(#home-menu:not([hidden])) #panorama-shade{display:none}
 @media(max-aspect-ratio:4/5){
  .touch-device #home-menu .title-logo{top:10%;width:88%}
  .touch-device #home-menu .home-buttons{top:32%;left:calc(50% - min(37.5%,160px));width:75%;max-width:320px}
- .touch-device #home-menu #home-player{right:4%;width:30%;height:min(21dvh,max(68px,calc(56dvh - 250px)));max-height:180px}
+ .touch-device #home-menu #home-player{right:4%;width:30%;min-width:110px;height:min(21dvh,max(68px,calc(56dvh - 250px)));max-height:180px}
  .touch-device #home-menu #home-skin{right:4%;width:30%;min-width:110px}
  .touch-device #home-menu .home-notice{bottom:42px;line-height:13px;padding:0 8px}
  .touch-device #home-menu footer{align-items:end;line-height:13px;bottom:max(6px,env(safe-area-inset-bottom))}

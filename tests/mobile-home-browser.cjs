@@ -20,7 +20,7 @@ const fs=require('node:fs');fs.mkdirSync('test-results/home',{recursive:true});
   assert.equal(await mobile.locator('.title-logo img').count(),1);
   assert.equal(await mobile.locator('.title-logo h1').count(),0);
   assert.equal(await mobile.locator('#home-logo').evaluate(img=>new URL(img.src).pathname),'/menu/logo.png');
-  for(const [name,viewport] of [['landscape',{width:844,height:390}],['portrait',{width:390,height:844}],['small-portrait',{width:320,height:568}],['short-landscape',{width:640,height:300}]]){
+  for(const [name,viewport] of [['landscape',{width:844,height:390}],['wide-landscape',{width:1280,height:550}],['portrait',{width:390,height:844}],['small-portrait',{width:320,height:568}],['short-landscape',{width:640,height:300}]]){
    await mobile.setViewportSize(viewport);await mobile.waitForTimeout(300);
    const layout=await mobile.locator('#home-menu').evaluate(home=>{
     const selectors=['.title-logo','#home-worlds','#home-settings','#home-samples','#home-skin','#home-language','#home-player','.home-notice','footer'];
@@ -28,6 +28,7 @@ const fs=require('node:fs');fs.mkdirSync('test-results/home',{recursive:true});
    });
    assert(layout.every(r=>r.inside),`${name}: ${JSON.stringify(layout)}`);
    const box=id=>layout.find(r=>r.selector===id),play=box('#home-worlds'),settings=box('#home-settings'),samples=box('#home-samples'),doll=box('#home-player');
+   const skin=box('#home-skin');assert(Math.abs(doll.x+doll.width/2-skin.x-skin.width/2)<1&&doll.bottom<skin.y,`${name}: Steve is centered above Skin`);
    assert(box('.title-logo').bottom<=play.y,`${name}: Logo does not overlap Play`);
    const logo=await mobile.locator('#home-logo').evaluate(img=>{const r=img.getBoundingClientRect();return {width:img.naturalWidth,height:img.naturalHeight,ratio:r.width/r.height};});
    assert.equal(logo.width,999);assert.equal(logo.height,297);assert(Math.abs(logo.ratio-999/297)<.01,'Logo preserves its aspect ratio');
@@ -69,6 +70,6 @@ const fs=require('node:fs');fs.mkdirSync('test-results/home',{recursive:true});
    }
    await mobile.screenshot({path:`test-results/home/logo-${season}.png`});
   }
-  assert.deepEqual(errors,[]);assert.deepEqual(bad,[]);console.log(JSON.stringify({home:true,viewports:4,seasonalLogos:true,nativeTextures:true,rotatingPlayer:true,menuActions:true,japanese:true,desktop:true,errors,bad}));
+  assert.deepEqual(errors,[]);assert.deepEqual(bad,[]);console.log(JSON.stringify({home:true,viewports:5,playerAboveSkin:true,seasonalLogos:true,nativeTextures:true,rotatingPlayer:true,menuActions:true,japanese:true,desktop:true,errors,bad}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
