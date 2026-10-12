@@ -40,7 +40,7 @@ export async function checkAppOutput(directory: string) {
   if (size.bytes > APP_BUDGET) throw new Error(`Vercel output exceeds the project's 100 MiB budget (${(size.bytes / 1024 ** 2).toFixed(1)} MiB). Keep generated world assets on the external CDN.`);
   try { await stat(join(directory, 'generated')); throw new Error('Generated assets leaked into the Vercel output.'); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-  for (const file of ['index.html', 'menu/logo.png', 'menu/logo-spring.png', 'menu/logo-summer.png', 'menu/viewer-data.json', 'menu/native-models.json', 'favicon.svg']) await stat(join(directory, file));
+  for (const file of ['index.html', 'menu/logo.png', 'menu/logo-spring.png', 'menu/logo-summer.png', 'menu/viewer-data.json', 'menu/native-models.json', 'favicon.svg', 'og-image.png']) await stat(join(directory, file));
   return size;
 }
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');

@@ -75,8 +75,8 @@ try {
   }
   assert.equal((await inventory(directory)).files, 7);
   const app = join(directory, 'app'); await mkdir(join(app, 'menu'), { recursive: true });
-  for (const file of ['index.html', 'menu/logo.png', 'menu/logo-spring.png', 'menu/logo-summer.png', 'menu/viewer-data.json', 'menu/native-models.json', 'favicon.svg']) await writeFile(join(app, file), 'fixture');
-  assert.equal((await checkAppOutput(app)).files, 7);
+  for (const file of ['index.html', 'menu/logo.png', 'menu/logo-spring.png', 'menu/logo-summer.png', 'menu/viewer-data.json', 'menu/native-models.json', 'favicon.svg', 'og-image.png']) await writeFile(join(app, file), 'fixture');
+  assert.equal((await checkAppOutput(app)).files, 8);
   await mkdir(join(app, 'generated'));
   await assert.rejects(checkAppOutput(app), /leaked/);
   await rm(join(app, 'generated'), { recursive: true });

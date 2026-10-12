@@ -18,6 +18,7 @@ export default defineConfig(({mode,command})=>{
         const output=resolve(options.dir??'dist');
         await cp(resolve('public/menu'),resolve(output,'menu'),{recursive:true});
         await copyFile(resolve('public/favicon.svg'),resolve(output,'favicon.svg'));
+        await copyFile(resolve('public/og-image.png'),resolve(output,'og-image.png'));
         const size=await checkAppOutput(output);
         console.log(`App output: ${(size.bytes/1024**2).toFixed(2)} MiB, ${size.files} files.`);
       },
