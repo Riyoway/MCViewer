@@ -2,6 +2,8 @@
 
 The app is a static Vite site on Vercel. The large sample worlds, atlas, in-world audio and weather resources load directly from a dedicated Cloudflare R2 bucket. Vercel does not proxy or copy those files.
 
+The production site is [mcv.riyo.me](https://mcv.riyo.me/). The existing `assets.mcviewer.riyo.me` CDN continues serving the pinned release. The previous site domain remains available because browser-saved worlds, skins and settings belong to their original origin and do not automatically move to a new domain.
+
 ## Default release
 
 `deployment/asset-release.json` records the immutable public asset URL. `deployment/asset-checks.json` pins SHA-256 hashes for 33 files, including startup data and all 14 sample worlds' nearest spawn mesh/voxel columns. A fresh source clone can verify this release without a local asset workspace or Git history.

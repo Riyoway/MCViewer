@@ -2,7 +2,7 @@
 
 A browser-based Minecraft world viewer built with Three.js, TypeScript and Vite.
 
-[Open the viewer](https://mcviewer.riyo.me/)
+[Open the viewer](https://mcv.riyo.me/)
 
 - Explore 14 sample tutorial and Mash-up worlds, or import a Java Edition world ZIP/folder.
 - Load a resource pack alongside an imported world.
