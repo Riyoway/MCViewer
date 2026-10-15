@@ -11,6 +11,26 @@ A browser-based Minecraft world viewer built with Three.js, TypeScript and Vite.
 - Adjust time, weather, view distance, and Legacy Console display gamma.
 - English, Japanese, Simplified Chinese, Traditional Chinese and Korean menus.
 
+## Screenshots
+
+### Desktop
+
+| Home screen | Exploring the Super Mario sample world |
+| --- | --- |
+| ![Desktop Home screen with the Minecraft World Viewer logo and world selection buttons](docs/screenshots/desktop-home.png) | ![Desktop gameplay overlooking the Mario statue and surrounding sample world](docs/screenshots/desktop-gameplay.png) |
+
+### Mobile
+
+| Home screen | Touch controls |
+| --- | --- |
+| ![Mobile Home screen with the player preview above the Skin button](docs/screenshots/mobile-home.png) | ![Mobile gameplay approaching a castle with the touch joystick and action buttons visible](docs/screenshots/mobile-gameplay.png) |
+
+| Weather and third-person view | Lava-lit interiors |
+| --- | --- |
+| ![Mobile third-person gameplay on a wooden ship in the rain](docs/screenshots/mobile-rain.png) | ![Mobile third-person gameplay in a room lit by lava](docs/screenshots/mobile-lava.png) |
+
+## Playing
+
 Imported worlds, resource packs and world edits stay in the browser's IndexedDB. They are not uploaded to the server. Reset World removes local edits to the selected world.
 
 On a phone or tablet, open a world to show the touch controls automatically.
