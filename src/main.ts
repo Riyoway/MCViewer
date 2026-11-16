@@ -23,6 +23,7 @@ import { AssetManager, assetUrl } from './core/AssetManager';
 import { Player,lockPointer } from './core/Player';
 import { PlayerModel } from './core/PlayerModel';
 import { Presence } from './multiplayer/Presence';
+import { WorldGate } from './multiplayer/WorldGate';
 import { AudioManager } from './core/AudioManager';
 import { World } from './minecraft/WorldLoader';
 import { Sky } from './world/Sky';
@@ -88,7 +89,16 @@ async function init() {
   }
   function selectEntry(id:string){selected=id;document.querySelectorAll<HTMLElement>('[data-world]').forEach(button=>{const active=button.dataset.world===id;button.classList.toggle('selected',active);button.setAttribute('aria-selected',String(active));});enter.disabled=!id;$<HTMLButtonElement>('delete-world').disabled=!id||listMode==='samples';}
   function openMultiplayer(): void {entered=false;menu('multiplayer-menu');}
-  // Task 5/6 seam: route an open Task 2 DataChannel into Presence.
+  // Task 5 seam: gate multiplayer join on full world receipt.
+  // Local matches reload via choose() with zero transfer; custom worlds
+  // buffer kind-tagged chunks in the gate and reach play() only at 100%.
+  let mpGate: WorldGate | null = null;
+  const gateJoinWorld = (roomWorldId: string): 'local' | 'transfer' => {
+    mpGate = new WorldGate({samples: Object.keys(samples), savedIds: records.keys(), roomWorld: roomWorldId});
+    if(mpGate.decision === 'transfer') enter.disabled = true;
+    return mpGate.decision;
+  };
+  // Task 6 seam: route an open Task 2 DataChannel into Presence.
   const attachMpChannel=(channel:RTCDataChannel|null)=>{mpChannel=channel;if(channel){const prev=channel.onmessage;channel.onmessage=event=>{if(prev)try{prev.call(channel,event);}catch{/* keep prior handler failures local */}try{presence?.applyRemote(JSON.parse(String(event.data)));}catch{/* malformed presence is dropped */}};}};
   $('home-multiplayer').onclick=openMultiplayer;
   $('multiplayer-back').onclick=()=>menu('home-menu');$('room-back').onclick=()=>menu('multiplayer-menu');
@@ -189,10 +199,10 @@ async function init() {
     }catch(cause){source?.dispose();if(pendingImport===source)pendingImport=undefined;if(token===request){document.exitPointerLock?.();report(cause);menu('map-menu');void refreshList();}}
   }
   function captureLoading(){if(touch?.enabled||touchDevice())return;const token=request+1;void lockPointer(canvas).then(()=>{if(token!==request)document.exitPointerLock?.();}).catch(()=>{/* The canvas click can retry if this browser requires another gesture. */});}
-  async function openSelected(){if(!selected)return;captureLoading();const opened=await choose(selected);if(opened&&world===opened)play();}
-  const play=()=>{if(!player||!worldReady)return;entered=true;menu('playing');document.body.classList.add('playing');document.body.classList.remove('pause-background');$('hud').hidden=false;$('menus').inert=true;hud.hide();canvas.focus({preventScroll:true});setText($('resume'),'Back to World');if(!touch?.enabled&&!player.locked)void player.lock().catch(()=>{/* Keep the world visible; a canvas click retries pointer lock. */});void audio.start().catch(report);};
+  async function openSelected(){if(!selected)return;mpGate=null;captureLoading();const opened=await choose(selected);if(opened&&world===opened)play();}
+  const play=()=>{if(!player||!worldReady)return;if(mpGate&&!mpGate.canPlay)return;entered=true;menu('playing');document.body.classList.add('playing');document.body.classList.remove('pause-background');$('hud').hidden=false;$('menus').inert=true;hud.hide();canvas.focus({preventScroll:true});setText($('resume'),'Back to World');if(!touch?.enabled&&!player.locked)void player.lock().catch(()=>{/* Keep the world visible; a canvas click retries pointer lock. */});void audio.start().catch(report);};
   enter.addEventListener('click',()=>void openSelected());$('resume').addEventListener('click',play);
-  const cancelLoading=()=>{request++;document.exitPointerLock?.();pendingImport?.dispose();pendingImport=undefined;worldReady=false;if(world){scene.remove(world.root);world.dispose();world=null;}entered=false;menu('map-menu');void refreshList();};$('cancel-loading').onclick=cancelLoading;
+  const cancelLoading=()=>{request++;document.exitPointerLock?.();pendingImport?.dispose();pendingImport=undefined;mpGate=null;worldReady=false;if(world){scene.remove(world.root);world.dispose();world=null;}entered=false;menu('map-menu');void refreshList();};$('cancel-loading').onclick=cancelLoading;
   $('respawn').addEventListener('click',()=>{spawn();play();});
   $('reset-map').addEventListener('click',()=>{if(!worldReady||!world)return;setLiteral($('reset-map-name'),world.data.name);menu('reset-menu');$('cancel-reset').focus();});
   const cancelReset=()=>{menu('pause-menu');$('reset-map').focus();};
@@ -268,6 +278,6 @@ async function init() {
     if(debug&&player&&world)$('debug').textContent=`${fps} FPS\nXYZ ${player.position.map(n=>n.toFixed(1)).join(' / ')}\n${world.data.name}\n${t(player.movement.flying?'Flying':player.movement.swimming?'Swimming':'Walking')}`;
   });
   await refreshList();menu('home-menu');$('menus').inert=false;$('menus').removeAttribute('aria-busy');
-  if(new URLSearchParams(location.search).has('debug'))Object.defineProperty(window,'mcViewer',{configurable:true,get:()=>({touch,player,world,renderer,viewRenderer,mobileHome,skins,scene,camera,assets,sky,audio,weather,hud,config,controls,held,outline,debris,store,resourcePack,records,presence,attachMpChannel})});
+  if(new URLSearchParams(location.search).has('debug'))Object.defineProperty(window,'mcViewer',{configurable:true,get:()=>({touch,player,world,renderer,viewRenderer,mobileHome,skins,scene,camera,assets,sky,audio,weather,hud,config,controls,held,outline,debris,store,resourcePack,records,presence,attachMpChannel,mpGate:()=>mpGate,gateJoinWorld})});
 }
 void init().catch(report);

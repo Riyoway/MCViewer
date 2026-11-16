@@ -8,6 +8,8 @@ export class WorldStore {
   private async transaction<T>(mode:IDBTransactionMode,run:(store:IDBObjectStore)=>IDBRequest<T>){const db=await this.open();return new Promise<T>((resolve,reject)=>{const tx=db.transaction('worlds',mode),request=run(tx.objectStore('worlds'));tx.oncomplete=()=>resolve(request.result);tx.onabort=tx.onerror=()=>reject(tx.error??request.error);});}
   async list(){const values=await this.transaction('readonly',s=>s.getAll()) as SavedWorld[];return values.sort((a,b)=>b.added-a.added);}
   get(id:string){return this.transaction('readonly',s=>s.get(id)) as Promise<SavedWorld|undefined>;}
+  /** Join-gate match check: ids only, never blobs. */
+  async ids(){return (await this.transaction('readonly',s=>s.getAllKeys()) as unknown as string[]).slice();}
   put(world:SavedWorld){return this.transaction('readwrite',s=>s.put(world));}
   delete(id:string){return this.transaction('readwrite',s=>s.delete(id));}
 }
