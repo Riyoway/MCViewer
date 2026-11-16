@@ -1,0 +1,132 @@
+// Room codes (worldId + hostNonce short form) plus the browser-only
+// WebRTC host/guest handshake. Pure code/nonce helpers run in Node tests;
+// RTCPeerConnection is resolved lazily so imports never touch browser APIs.
+import {decodeSignal,encodeSignal} from './Signaling.ts';
+
+export interface RoomInfo {
+  worldId: string;
+  hostNonce: string;
+}
+
+const NONCE_PATTERN = /^[0-9A-Za-z]{4,16}$/;
+
+/** 6-char short nonce, e.g. "k7q2md". */
+export function createHostNonce(): string {
+  const alphabet = '0123456789abcdefghijklmnopqrstuvwxyz';
+  const bytes = new Uint8Array(6);
+  const crypto = (globalThis as {crypto?: {getRandomValues?: (array: Uint8Array) => Uint8Array}}).crypto;
+  // shortcut: Math.random fallback only where WebCrypto is missing; upgrade if room-code collisions ever matter.
+  if(crypto?.getRandomValues) crypto.getRandomValues(bytes);
+  else for(let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  let nonce = '';
+  for(const byte of bytes) nonce += alphabet[byte % alphabet.length];
+  return nonce;
+}
+
+function checkWorldId(worldId: string): void {
+  if(!worldId || worldId.length > 128 || /[#\s]/.test(worldId)) {
+    throw new Error(`Invalid world id: expected non-empty text without '#' or whitespace, got ${JSON.stringify(worldId)}.`);
+  }
+}
+
+/** worldId + hostNonce short form, e.g. "local:abc123#k7q2md". */
+export function createRoomCode(worldId: string, hostNonce: string = createHostNonce()): string {
+  checkWorldId(worldId);
+  if(!NONCE_PATTERN.test(hostNonce)) throw new Error(`Invalid room code: host nonce must match ${NONCE_PATTERN}, got ${JSON.stringify(hostNonce)}.`);
+  return `${worldId}#${hostNonce}`;
+}
+
+/** Parse a room code back into worldId + hostNonce. Throws clearly on bad input. */
+export function parseRoomCode(code: string): RoomInfo {
+  const hash = code.lastIndexOf('#');
+  const worldId = hash < 0 ? '' : code.slice(0, hash);
+  const hostNonce = hash < 0 ? '' : code.slice(hash + 1);
+  try {
+    checkWorldId(worldId);
+  } catch {
+    throw new Error(`Invalid room code: expected "worldId#nonce", got ${JSON.stringify(code)}.`);
+  }
+  if(!NONCE_PATTERN.test(hostNonce)) throw new Error(`Invalid room code: expected "worldId#nonce", got ${JSON.stringify(code)}.`);
+  return {worldId, hostNonce};
+}
+
+function resolvePeer(input?: RTCPeerConnection | (() => RTCPeerConnection)): RTCPeerConnection {
+  if(typeof input === 'function') return input();
+  if(input) return input;
+  const Factory = (globalThis as {RTCPeerConnection?: new () => RTCPeerConnection}).RTCPeerConnection;
+  if(!Factory) throw new Error('RTCPeerConnection is unavailable in this environment (browser-only).');
+  return new Factory();
+}
+
+export interface HostRoom {
+  code: string;
+  /** Base64 offer for manual copy-paste (or auto-exchange). */
+  offer: string;
+  channel: RTCDataChannel;
+  peer: RTCPeerConnection;
+  /** Complete the offer->answer->open round-trip with the guest's answer. */
+  acceptAnswer: (answer: string) => Promise<RTCDataChannel>;
+}
+
+/**
+ * Host side: mint a room code and a base64 offer. Needs a browser
+ * RTCPeerConnection (or an injected factory in tests).
+ */
+export async function createRoom(worldId: string, opts?: {hostNonce?: string; peer?: RTCPeerConnection | (() => RTCPeerConnection)}): Promise<HostRoom> {
+  const code = createRoomCode(worldId, opts?.hostNonce);
+  const peer = resolvePeer(opts?.peer);
+  try {
+    const channel = peer.createDataChannel('mc', {ordered: true});
+    const offer = await peer.createOffer();
+    await peer.setLocalDescription(offer);
+    return {
+      code,
+      offer: encodeSignal(peer.localDescription ?? offer),
+      channel,
+      peer,
+      acceptAnswer: async (answer: string) => {
+        await peer.setRemoteDescription(decodeSignal<RTCSessionDescriptionInit>(answer));
+        return channel;
+      },
+    };
+  } catch(cause) {
+    try{peer.close();}catch{/* already closed */}
+    throw cause;
+  }
+}
+
+export interface GuestRoom {
+  worldId: string;
+  /** Base64 answer to hand back to the host. */
+  answer: string;
+  channel: RTCDataChannel;
+  peer: RTCPeerConnection;
+}
+
+/**
+ * Guest side: join by room code with the host's base64 offer, producing
+ * the base64 answer. The code is validated before any RTC work runs.
+ */
+export async function joinRoom(code: string, offer: string, peer?: RTCPeerConnection | (() => RTCPeerConnection)): Promise<GuestRoom> {
+  const {worldId} = parseRoomCode(code);
+  const remote = decodeSignal<RTCSessionDescriptionInit>(offer);
+  const connection = resolvePeer(peer);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const channel = new Promise<RTCDataChannel>((resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`No data channel arrived for room ${code}.`)), 15000);
+    connection.ondatachannel = event => {
+      clearTimeout(timer);
+      resolve(event.channel);
+    };
+  });
+  try {
+    await connection.setRemoteDescription(remote);
+  } catch(cause) {
+    clearTimeout(timer);
+    throw cause;
+  }
+  const dataChannel = await channel;
+  const answer = await connection.createAnswer();
+  await connection.setLocalDescription(answer);
+  return {worldId, answer: encodeSignal(connection.localDescription ?? answer), channel: dataChannel, peer: connection};
+}
