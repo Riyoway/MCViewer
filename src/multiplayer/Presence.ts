@@ -37,11 +37,29 @@ export interface RemotePeer {
   readonly pitch: number;
 }
 
+/** Host sky/weather snapshot: guests overwrite sky.time/weather.mode at low frequency. */
+export type EnvWeather = 'clear' | 'rain' | 'thunder' | 'snow';
+
+export interface EnvMessage {
+  kind: 'env';
+  sender: string;
+  seq: number;
+  time: number;
+  weather: EnvWeather;
+}
+
+export interface EnvState {
+  time: number;
+  weather: EnvWeather;
+}
+
 interface RemoteEntry extends RemotePeer {
   model?: RemoteModel;
 }
 
 const TICK_MS = 100;
+const ENV_TICK_MS = 1000;
+const ENV_WEATHERS: readonly string[] = ['clear', 'rain', 'thunder', 'snow'];
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 
 function clock(): number {
@@ -52,6 +70,9 @@ function clock(): number {
 export class Presence {
   private seq = 0;
   private lastSend = -Infinity;
+  private envSeq = 0;
+  private lastEnvSend = -Infinity;
+  private lastEnvSeq = -Infinity;
   private readonly remotes = new Map<string, RemoteEntry>();
 
   constructor(
@@ -115,6 +136,11 @@ export class Presence {
     return true;
   }
 
+  /** Detach every replica; map switches and disconnects drop stale remotes. */
+  clear(): void {
+    for(const id of [...this.remotes.keys()]) this.remove(id);
+  }
+
   /** Detach the replica; the transport (Task 5/6) decides reconnect policy. */
   remove(id: string): boolean {
     const entry = this.remotes.get(id);
@@ -124,5 +150,40 @@ export class Presence {
       entry.model?.root.removeFromParent();
     } catch {/* replica already detached */}
     return true;
+  }
+
+  /** Host sky/weather snapshot, at most every 1000ms (low frequency). */
+  broadcastEnv(time: number, weather: string): boolean {
+    if(!finite(time) || !ENV_WEATHERS.includes(weather)) return false;
+    const now = this.opts?.now ?? clock;
+    if(now() - this.lastEnvSend < ENV_TICK_MS) return false;
+    this.lastEnvSend = now();
+    this.envSeq++;
+    const message: EnvMessage = {kind: 'env', sender: this.localId, seq: this.envSeq, time, weather: weather as EnvWeather};
+    this.send(JSON.stringify(message));
+    return true;
+  }
+
+  /**
+   * Follow one host snapshot. Guests pass the host id to ignore anyone else;
+   * without it any non-self sender applies (single-host rooms: only the host
+   * broadcasts). Own echoes, stale seq, and non-env payloads are dropped.
+   */
+  applyHostEnv(raw: string | EnvMessage, hostId?: string): EnvState | false {
+    let message: EnvMessage;
+    if(typeof raw === 'string') {
+      try {
+        message = JSON.parse(raw);
+      } catch {
+        return false;
+      }
+    } else message = raw;
+    if(!message || typeof message !== 'object' || message.kind !== 'env') return false;
+    if(typeof message.sender !== 'string' || !message.sender || message.sender === this.localId) return false;
+    if(hostId && message.sender !== hostId) return false;
+    if(!finite(message.seq) || message.seq <= this.lastEnvSeq) return false;
+    if(!finite(message.time) || !ENV_WEATHERS.includes(message.weather)) return false;
+    this.lastEnvSeq = message.seq;
+    return {time: message.time, weather: message.weather};
   }
 }

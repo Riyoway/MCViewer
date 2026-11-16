@@ -22,8 +22,8 @@ import type {SkinModel} from './core/Skin';
 import { AssetManager, assetUrl } from './core/AssetManager';
 import { Player,lockPointer } from './core/Player';
 import { PlayerModel } from './core/PlayerModel';
-import { Presence } from './multiplayer/Presence';
-import { WorldGate } from './multiplayer/WorldGate';
+import { Presence, type EnvMessage } from './multiplayer/Presence';
+import { WorldGate, isWorldGateMessage, type WorldGateMessage } from './multiplayer/WorldGate';
 import { AudioManager } from './core/AudioManager';
 import { World } from './minecraft/WorldLoader';
 import { Sky } from './world/Sky';
@@ -92,14 +92,55 @@ async function init() {
   // Task 5 seam: gate multiplayer join on full world receipt.
   // Local matches reload via choose() with zero transfer; custom worlds
   // buffer kind-tagged chunks in the gate and reach play() only at 100%.
-  let mpGate: WorldGate | null = null;
+  let mpGate: WorldGate | null = null, mpRole: 'host' | 'guest' = 'guest', mpActive = false;
+  // Task 6: progress re-enables enter; nothing to do without an active gate.
+  const syncMpEnter = (): void => {
+    if(mpGate) enter.disabled = !mpGate.canEnter;
+  };
   const gateJoinWorld = (roomWorldId: string): 'local' | 'transfer' => {
     mpGate = new WorldGate({samples: Object.keys(samples), savedIds: records.keys(), roomWorld: roomWorldId});
-    if(mpGate.decision === 'transfer') enter.disabled = true;
+    syncMpEnter();
     return mpGate.decision;
   };
+  // Task 6: shared teardown for every world exit during a session
+  // (change-map, cancel-loading, disconnect): no stale remotes, open
+  // channel, or gate bytes survive. Touch/mobile share the same menu() path.
+  const quitMpSession = (): void => {
+    mpActive = false;
+    try{mpChannel?.close();}catch{/* already closed */}
+    mpChannel = null;
+    mpRole = 'guest';
+    presence?.clear();
+    if(mpGate){mpGate.cancel();mpGate = null;}
+  };
+  // Task 6: any transport drop returns every guest to the world list with a
+  // localized reason; menu() keeps touch/mobile on the same path.
+  const leaveMultiplayer = (messageKey: string): void => {
+    if(!mpActive) return;
+    quitMpSession();
+    enter.disabled = !selected;
+    entered = false;
+    document.exitPointerLock?.();
+    report(t(messageKey));
+    menu('map-menu');
+    void refreshList();
+  };
+  // Task 6 guest path: world-meta/world-chunk feed the gate; each chunk
+  // re-syncs enter, so play stays blocked until 100%.
+  // shortcut: guest receive only (host world-request serving unwired);
+  // upgrade when the host WorldStore-bytes source lands.
+  const handleMpWorld = (message: WorldGateMessage): void => {
+    if(!mpGate || mpRole === 'host') return;
+    if(message.kind === 'world-meta') mpGate.beginTransfer(message.total, message.chunks);
+    else if(message.kind === 'world-chunk') {
+      if(!(message.data instanceof Uint8Array)) return;
+      mpGate.receiveChunk(message.index, message.data);
+    }
+    else return;
+    syncMpEnter();
+  };
   // Task 6 seam: route an open Task 2 DataChannel into Presence.
-  const attachMpChannel=(channel:RTCDataChannel|null)=>{mpChannel=channel;if(channel){const prev=channel.onmessage;channel.onmessage=event=>{if(prev)try{prev.call(channel,event);}catch{/* keep prior handler failures local */}try{presence?.applyRemote(JSON.parse(String(event.data)));}catch{/* malformed presence is dropped */}};}};
+  const attachMpChannel=(channel:RTCDataChannel|null,role:'host'|'guest'='guest')=>{mpChannel=channel;mpRole=role;mpActive=!!channel;if(channel){channel.onclose=()=>{if(mpChannel!==channel)return;leaveMultiplayer(entered&&worldReady?'Host left the session':'Connection to the host was lost');};channel.onerror=()=>{if(mpChannel!==channel)return;leaveMultiplayer('Connection to the host was lost');};const prev=channel.onmessage;channel.onmessage=event=>{if(prev)try{prev.call(channel,event);}catch{/* keep prior handler failures local */}let data:unknown;try{data=JSON.parse(String(event.data));}catch{/* malformed payload is dropped */return;}if(data&&typeof data==='object'){const kind=(data as {kind?:unknown}).kind;if(kind==='env'){const env=presence?.applyHostEnv(data as EnvMessage);if(env){sky.time=env.time;if(weather.mode!==env.weather)weather.setMode(env.weather);}return;}if(isWorldGateMessage(data)){handleMpWorld(data);return;}}try{presence?.applyRemote(data as {id:string;x:number;y:number;z:number;yaw:number;pitch:number;seq:number});}catch{/* malformed presence is dropped */}};}};
   $('home-multiplayer').onclick=openMultiplayer;
   $('multiplayer-back').onclick=()=>menu('home-menu');$('room-back').onclick=()=>menu('multiplayer-menu');
   $('home-worlds').onclick=()=>{entered=false;menu('map-menu');void refreshList('local');};$('home-samples').onclick=()=>{entered=false;menu('map-menu');void refreshList('samples');};
@@ -173,7 +214,7 @@ async function init() {
   const spawn=()=>{if(!player||!world)return;player.stop();player.position.splice(0,3,...world.data.spawn);player.yaw=Math.PI-world.data.yaw*Math.PI/180;player.pitch=0;player.movement.flying=false;player.movement.grounded=false;while(player.collision.overlaps(...player.position)&&player.position[1]<world.data.bounds.max[1])player.position[1]++;player.update(0);};
   async function choose(name:string) {
     const token=++request;selected=name;entered=false;hud.hide();enter.disabled=true;lastWorldError='';setMessage(loading,'Loading world...');menu('loading-menu');$<HTMLProgressElement>('load-progress').removeAttribute('value');
-    worldReady=false;player?.stop();controls.reset();debris.clear();held.clear();audio.weather([],camera,false);pendingImport?.dispose();pendingImport=undefined;if(world){scene.remove(world.root);world.dispose();world=null;}
+    worldReady=false;player?.stop();controls.reset();debris.clear();held.clear();presence?.clear();audio.weather([],camera,false);pendingImport?.dispose();pendingImport=undefined;if(world){scene.remove(world.root);world.dispose();world=null;}
     let imported:ImportResult|undefined,source:ImportedWorld|undefined;
     try {
       const record=records.get(samples[name]?'sample:'+name:name),theme=samples[name]?(name.startsWith('tutorial')?'vanilla':name):'vanilla';
@@ -199,16 +240,16 @@ async function init() {
     }catch(cause){source?.dispose();if(pendingImport===source)pendingImport=undefined;if(token===request){document.exitPointerLock?.();report(cause);menu('map-menu');void refreshList();}}
   }
   function captureLoading(){if(touch?.enabled||touchDevice())return;const token=request+1;void lockPointer(canvas).then(()=>{if(token!==request)document.exitPointerLock?.();}).catch(()=>{/* The canvas click can retry if this browser requires another gesture. */});}
-  async function openSelected(){if(!selected)return;mpGate=null;captureLoading();const opened=await choose(selected);if(opened&&world===opened)play();}
+  async function openSelected(){if(!selected)return;if(mpGate&&mpGate.decision==='transfer'){const bytes=mpGate.takeBytes();if(!bytes){syncMpEnter();return;}records.set(selected,{id:selected,name:mpGate.roomWorld||selected,added:Date.now(),files:[{name:`${selected.split(':').pop()??selected}.zip`,blob:new Blob([bytes.buffer as ArrayBuffer])}]});}mpGate=null;captureLoading();const opened=await choose(selected);if(opened&&world===opened)play();}
   const play=()=>{if(!player||!worldReady)return;if(mpGate&&!mpGate.canPlay)return;entered=true;menu('playing');document.body.classList.add('playing');document.body.classList.remove('pause-background');$('hud').hidden=false;$('menus').inert=true;hud.hide();canvas.focus({preventScroll:true});setText($('resume'),'Back to World');if(!touch?.enabled&&!player.locked)void player.lock().catch(()=>{/* Keep the world visible; a canvas click retries pointer lock. */});void audio.start().catch(report);};
   enter.addEventListener('click',()=>void openSelected());$('resume').addEventListener('click',play);
-  const cancelLoading=()=>{request++;document.exitPointerLock?.();pendingImport?.dispose();pendingImport=undefined;mpGate=null;worldReady=false;if(world){scene.remove(world.root);world.dispose();world=null;}entered=false;menu('map-menu');void refreshList();};$('cancel-loading').onclick=cancelLoading;
+  const cancelLoading=()=>{request++;document.exitPointerLock?.();pendingImport?.dispose();pendingImport=undefined;quitMpSession();worldReady=false;if(world){scene.remove(world.root);world.dispose();world=null;}entered=false;menu('map-menu');void refreshList();};$('cancel-loading').onclick=cancelLoading;
   $('respawn').addEventListener('click',()=>{spawn();play();});
   $('reset-map').addEventListener('click',()=>{if(!worldReady||!world)return;setLiteral($('reset-map-name'),world.data.name);menu('reset-menu');$('cancel-reset').focus();});
   const cancelReset=()=>{menu('pause-menu');$('reset-map').focus();};
   $('cancel-reset').addEventListener('click',cancelReset);
   $('confirm-reset').addEventListener('click',()=>{if(!worldReady||!world)return;world.edits.clear();captureLoading();void choose(selected).then(opened=>{if(opened&&world===opened)play();});});
-  $('change-map').addEventListener('click',()=>{entered=false;worldReady=false;hud.hide();controls.reset();debris.clear();if(world){scene.remove(world.root);world.dispose();world=null;}audio.select('menu');menu('home-menu');document.exitPointerLock?.();$('home-worlds').focus();});
+  $('change-map').addEventListener('click',()=>{entered=false;worldReady=false;hud.hide();controls.reset();debris.clear();quitMpSession();if(world){scene.remove(world.root);world.dispose();world=null;}audio.select('menu');menu('home-menu');document.exitPointerLock?.();$('home-worlds').focus();});
   window.addEventListener('wheel',event=>{if(player?.locked){event.preventDefault();hud.select(hud.inventory.selected+Math.sign(event.deltaY));}},{passive:false});
   let touchAim:{x:number;y:number}|null=null;
   const targetRay=()=>{
@@ -251,7 +292,7 @@ async function init() {
   renderer.setAnimationLoop(time=>{
     const dt=Math.min((time-last)/1000,.1);last=time;if(document.hidden)return;
     elapsed+=dt;assets.time.value=elapsed;touch?.update();
-    if(player&&world&&worldReady){if(player.active){player.update(dt);controls.update(dt);}presence?.broadcastLocal(player);world.update(player.position,player.active?world.radius:1);if(player.position[1]<world.data.bounds.min[1]-20)spawn();if(world.error&&world.error!==lastWorldError){lastWorldError=world.error;report(world.error);}}
+    if(player&&world&&worldReady){if(player.active){player.update(dt);controls.update(dt);}presence?.broadcastLocal(player);if(mpRole==='host')presence?.broadcastEnv(sky.time,weather.mode);world.update(player.position,player.active?world.radius:1);if(player.position[1]<world.data.bounds.min[1]-20)spawn();if(world.error&&world.error!==lastWorldError){lastWorldError=world.error;report(world.error);}}
     if(player&&world){held.select(hud.selectedItem,hud.worldTheme);held.update(dt,model,player.active&&player.perspective===0);outline.update(worldReady&&player.active&&(player.locked||touchAim||config.touchMode==='joystick-crosshair')?world.target(targetRay().eye,targetRay().look):null,assets.manifest.blocks,player.active);debris.update(dt,camera,world,player.active);}
     if(player&&world&&worldReady){
       const p=player.position,m=player.movement,distance=stepPosition?Math.hypot(p[0]-stepPosition[0],p[2]-stepPosition[2]):0;

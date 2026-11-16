@@ -121,12 +121,13 @@ export async function joinRoom(code: string, offer: string, peer?: RTCPeerConnec
   });
   try {
     await connection.setRemoteDescription(remote);
+    const dataChannel = await channel;
+    const answer = await connection.createAnswer();
+    await connection.setLocalDescription(answer);
+    return {worldId, answer: encodeSignal(connection.localDescription ?? answer), channel: dataChannel, peer: connection};
   } catch(cause) {
     clearTimeout(timer);
+    try{connection.close();}catch{/* already closed */}
     throw cause;
   }
-  const dataChannel = await channel;
-  const answer = await connection.createAnswer();
-  await connection.setLocalDescription(answer);
-  return {worldId, answer: encodeSignal(connection.localDescription ?? answer), channel: dataChannel, peer: connection};
 }

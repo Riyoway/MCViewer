@@ -237,4 +237,6 @@ export const translations:Record<string,[string,string,string,string]>={
   "Create":["作成","创建","建立","만들기"],
   "Join":["参加","加入","加入","참가"],
   "Room code":["ルームコード","房间代码","房間代碼","방 코드"],
+  "Host left the session":["ホストが退出しました","房主已退出会话","房主已退出連線","호스트가 세션을 나갔습니다"],
+  "Connection to the host was lost":["ホストへの接続が切れました","与房主的连接已断开","與房主的連線已中斷","호스트와의 연결이 끊어졌습니다"],
 };
