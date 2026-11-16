@@ -9,7 +9,7 @@ import {WorldStore,type SavedWorld,type LocalFile} from './viewer/WorldStore';
 import {ImportedWorld,type ImportResult} from './viewer/ImportWorld';
 import {ResourcePack} from './viewer/ResourcePack';
 import {ConsoleGamma} from './core/ConsoleGamma';
-import { Scene, PerspectiveCamera, Fog, Color, Vector3, NearestFilter, NearestMipmapLinearFilter } from 'three';
+import { Scene, PerspectiveCamera, Fog, Color, Vector3, Group, Mesh, NearestFilter, NearestMipmapLinearFilter, type MeshBasicMaterial } from 'three';
 import {TouchControls,touchDevice} from './ui/TouchControls';
 import {touchDefaults} from './core/TouchInput';
 import type {Vec3} from './minecraft/types';
@@ -22,6 +22,7 @@ import type {SkinModel} from './core/Skin';
 import { AssetManager, assetUrl } from './core/AssetManager';
 import { Player,lockPointer } from './core/Player';
 import { PlayerModel } from './core/PlayerModel';
+import { Presence } from './multiplayer/Presence';
 import { AudioManager } from './core/AudioManager';
 import { World } from './minecraft/WorldLoader';
 import { Sky } from './world/Sky';
@@ -53,6 +54,8 @@ if(!['clear','rain','thunder','snow'].includes(config.weather))config.weather='c
 if(!['joystick-tap','dpad-tap','joystick-crosshair'].includes(config.touchMode))config.touchMode=touchDefaults.touchMode;
 let touch:TouchControls|undefined;
 let world:World|null=null,player:Player|null=null,selected='',entered=false,request=0,ui='home-menu',settingsReturn='home-menu',debug=false,worldReady=false,defaultWorldName=true;
+let presence:Presence|null=null,mpChannel:RTCDataChannel|null=null;
+const remoteRoot=new Group();
 function menu(id:string){if(id==='home-menu')refreshHomeLogo();ui=id;touch?.setScreen(id);if(id!=='playing'){document.body.classList.remove('playing');$('hud').hidden=true;$('menus').inert=false;player?.stop();}document.querySelectorAll<HTMLElement>('[data-screen]').forEach(panel=>panel.hidden=panel.id!==id);const panorama=!entered&&['home-menu','skin-menu','settings-menu','video-menu','sound-menu','controls-menu','touch-menu','world-settings-menu','help-menu','language-menu'].includes(id);document.body.classList.toggle('panorama-menu',panorama);document.body.classList.toggle('dirt-menu',!panorama&&(!entered||['map-menu','add-menu','loading-menu','pack-menu','delete-menu','multiplayer-menu','room-menu'].includes(id)));document.body.classList.toggle('pause-background',entered&&!document.body.classList.contains('dirt-menu'));}
 function report(cause:unknown){console.warn('[World Viewer]',cause instanceof Event?'Unable to load an image.':cause);}
 async function init() {
@@ -85,6 +88,8 @@ async function init() {
   }
   function selectEntry(id:string){selected=id;document.querySelectorAll<HTMLElement>('[data-world]').forEach(button=>{const active=button.dataset.world===id;button.classList.toggle('selected',active);button.setAttribute('aria-selected',String(active));});enter.disabled=!id;$<HTMLButtonElement>('delete-world').disabled=!id||listMode==='samples';}
   function openMultiplayer(): void {entered=false;menu('multiplayer-menu');}
+  // Task 5/6 seam: route an open Task 2 DataChannel into Presence.
+  const attachMpChannel=(channel:RTCDataChannel|null)=>{mpChannel=channel;if(channel){const prev=channel.onmessage;channel.onmessage=event=>{if(prev)try{prev.call(channel,event);}catch{/* keep prior handler failures local */}try{presence?.applyRemote(JSON.parse(String(event.data)));}catch{/* malformed presence is dropped */}};}};
   $('home-multiplayer').onclick=openMultiplayer;
   $('multiplayer-back').onclick=()=>menu('home-menu');$('room-back').onclick=()=>menu('multiplayer-menu');
   $('home-worlds').onclick=()=>{entered=false;menu('map-menu');void refreshList('local');};$('home-samples').onclick=()=>{entered=false;menu('map-menu');void refreshList('samples');};
@@ -101,7 +106,7 @@ async function init() {
   $('active-pack-file').onchange=()=>{const file=$<HTMLInputElement>('active-pack-file').files?.[0];if(file)void changePack({name:file.name,blob:file}).catch(report);};$('default-active-pack').onclick=()=>void changePack().catch(report);
   $('home-help').onclick=()=>{helpReturn='home-menu';menu('help-menu');};$('help-back').onclick=()=>menu(helpReturn);
   document.querySelectorAll<HTMLButtonElement>('[data-submenu]').forEach(button=>button.onclick=()=>{if(button.dataset.submenu==='help-menu')helpReturn=ui;menu(button.dataset.submenu!);});document.querySelectorAll<HTMLButtonElement>('[data-options-back]').forEach(button=>button.onclick=()=>menu('settings-menu'));
-  await sky.load();scene.add(sky.root,model.root,weather.root);model.root.visible=false;
+  await sky.load();scene.add(sky.root,model.root,weather.root,remoteRoot);model.root.visible=false;
   const resize=()=>{const height=config.resolution?Math.min(innerHeight,config.resolution):innerHeight,width=Math.floor(height*innerWidth/innerHeight);renderer.setSize(width,height,false);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();document.documentElement.style.setProperty('--menu-scale',String(Math.max(1,Math.min(4,Math.floor(innerWidth/320),Math.floor(innerHeight/240)))));};
   window.addEventListener('resize',resize);
   const refreshOptions=nativeOptions($('menus'));
@@ -175,7 +180,10 @@ async function init() {
       if(!player){player=new Player(camera,model,current.collision,canvas,locked=>{
         if(!worldReady)return;document.body.classList.toggle('playing',locked);$('hud').hidden=!locked;$('menus').inert=locked;
         if(locked){entered=true;hud.hide();}else {if(entered&&ui!=='map-menu'&&ui!=='inventory')menu('pause-menu');if(entered&&ui!=='inventory')$('resume').focus();}
-      });player.viewModel.add(held.root);viewRenderer.attach(player.viewModel);}player.collision=current.collision;player.movement.collision=current.collision;worldReady=true;spawn();audio.select(samples[name]?name:'tutorial');applySettings();enter.disabled=false;setLiteral(loading,'');
+      });player.viewModel.add(held.root);viewRenderer.attach(player.viewModel);}player.collision=current.collision;player.movement.collision=current.collision;
+      // Remote follow: one PlayerModel replica per peer, posed only (local Movement/Collision untouched).
+      if(!presence)presence=new Presence(crypto.randomUUID(),text=>{if(mpChannel?.readyState==='open')try{mpChannel.send(text);}catch{/* drop presence on a closing channel */}},{createModel:()=>{const texture=((model.head.children[0] as Mesh).material as MeshBasicMaterial).map!;const replica=PlayerModel.fromSkin(texture.image.width,texture.image.height,assets.skinMaterial(texture),assets.skinMaterial(texture));remoteRoot.add(replica.root);return replica;}});
+      worldReady=true;spawn();audio.select(samples[name]?name:'tutorial');applySettings();enter.disabled=false;setLiteral(loading,'');
       if(imported?.warnings.length)console.info('World import:',imported.warnings);
       return current;
     }catch(cause){source?.dispose();if(pendingImport===source)pendingImport=undefined;if(token===request){document.exitPointerLock?.();report(cause);menu('map-menu');void refreshList();}}
@@ -233,7 +241,7 @@ async function init() {
   renderer.setAnimationLoop(time=>{
     const dt=Math.min((time-last)/1000,.1);last=time;if(document.hidden)return;
     elapsed+=dt;assets.time.value=elapsed;touch?.update();
-    if(player&&world&&worldReady){if(player.active){player.update(dt);controls.update(dt);}world.update(player.position,player.active?world.radius:1);if(player.position[1]<world.data.bounds.min[1]-20)spawn();if(world.error&&world.error!==lastWorldError){lastWorldError=world.error;report(world.error);}}
+    if(player&&world&&worldReady){if(player.active){player.update(dt);controls.update(dt);}presence?.broadcastLocal(player);world.update(player.position,player.active?world.radius:1);if(player.position[1]<world.data.bounds.min[1]-20)spawn();if(world.error&&world.error!==lastWorldError){lastWorldError=world.error;report(world.error);}}
     if(player&&world){held.select(hud.selectedItem,hud.worldTheme);held.update(dt,model,player.active&&player.perspective===0);outline.update(worldReady&&player.active&&(player.locked||touchAim||config.touchMode==='joystick-crosshair')?world.target(targetRay().eye,targetRay().look):null,assets.manifest.blocks,player.active);debris.update(dt,camera,world,player.active);}
     if(player&&world&&worldReady){
       const p=player.position,m=player.movement,distance=stepPosition?Math.hypot(p[0]-stepPosition[0],p[2]-stepPosition[2]):0;
@@ -260,6 +268,6 @@ async function init() {
     if(debug&&player&&world)$('debug').textContent=`${fps} FPS\nXYZ ${player.position.map(n=>n.toFixed(1)).join(' / ')}\n${world.data.name}\n${t(player.movement.flying?'Flying':player.movement.swimming?'Swimming':'Walking')}`;
   });
   await refreshList();menu('home-menu');$('menus').inert=false;$('menus').removeAttribute('aria-busy');
-  if(new URLSearchParams(location.search).has('debug'))Object.defineProperty(window,'mcViewer',{configurable:true,get:()=>({touch,player,world,renderer,viewRenderer,mobileHome,skins,scene,camera,assets,sky,audio,weather,hud,config,controls,held,outline,debris,store,resourcePack,records})});
+  if(new URLSearchParams(location.search).has('debug'))Object.defineProperty(window,'mcViewer',{configurable:true,get:()=>({touch,player,world,renderer,viewRenderer,mobileHome,skins,scene,camera,assets,sky,audio,weather,hud,config,controls,held,outline,debris,store,resourcePack,records,presence,attachMpChannel})});
 }
 void init().catch(report);
