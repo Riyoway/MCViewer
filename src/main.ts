@@ -53,7 +53,7 @@ if(!['clear','rain','thunder','snow'].includes(config.weather))config.weather='c
 if(!['joystick-tap','dpad-tap','joystick-crosshair'].includes(config.touchMode))config.touchMode=touchDefaults.touchMode;
 let touch:TouchControls|undefined;
 let world:World|null=null,player:Player|null=null,selected='',entered=false,request=0,ui='home-menu',settingsReturn='home-menu',debug=false,worldReady=false,defaultWorldName=true;
-function menu(id:string){if(id==='home-menu')refreshHomeLogo();ui=id;touch?.setScreen(id);if(id!=='playing'){document.body.classList.remove('playing');$('hud').hidden=true;$('menus').inert=false;player?.stop();}document.querySelectorAll<HTMLElement>('[data-screen]').forEach(panel=>panel.hidden=panel.id!==id);const panorama=!entered&&['home-menu','skin-menu','settings-menu','video-menu','sound-menu','controls-menu','touch-menu','world-settings-menu','help-menu','language-menu'].includes(id);document.body.classList.toggle('panorama-menu',panorama);document.body.classList.toggle('dirt-menu',!panorama&&(!entered||['map-menu','add-menu','loading-menu','pack-menu','delete-menu'].includes(id)));document.body.classList.toggle('pause-background',entered&&!document.body.classList.contains('dirt-menu'));}
+function menu(id:string){if(id==='home-menu')refreshHomeLogo();ui=id;touch?.setScreen(id);if(id!=='playing'){document.body.classList.remove('playing');$('hud').hidden=true;$('menus').inert=false;player?.stop();}document.querySelectorAll<HTMLElement>('[data-screen]').forEach(panel=>panel.hidden=panel.id!==id);const panorama=!entered&&['home-menu','skin-menu','settings-menu','video-menu','sound-menu','controls-menu','touch-menu','world-settings-menu','help-menu','language-menu'].includes(id);document.body.classList.toggle('panorama-menu',panorama);document.body.classList.toggle('dirt-menu',!panorama&&(!entered||['map-menu','add-menu','loading-menu','pack-menu','delete-menu','multiplayer-menu','room-menu'].includes(id)));document.body.classList.toggle('pause-background',entered&&!document.body.classList.contains('dirt-menu'));}
 function report(cause:unknown){console.warn('[World Viewer]',cause instanceof Event?'Unable to load an image.':cause);}
 async function init() {
   const preferred=savedLanguage();await loadLanguage('en');bindLanguage(document.body);if(preferred!=='en'){try{await loadLanguage(preferred);renderLanguage(document.body);}catch(cause){report(cause);}}
@@ -84,6 +84,9 @@ async function init() {
     setText($('world-list-title'),mode==='samples'?'Sample Worlds':'Select World');setText($('switch-worlds'),mode==='samples'?'Your Worlds':'Samples');selectEntry(selected);
   }
   function selectEntry(id:string){selected=id;document.querySelectorAll<HTMLElement>('[data-world]').forEach(button=>{const active=button.dataset.world===id;button.classList.toggle('selected',active);button.setAttribute('aria-selected',String(active));});enter.disabled=!id;$<HTMLButtonElement>('delete-world').disabled=!id||listMode==='samples';}
+  function openMultiplayer(): void {entered=false;menu('multiplayer-menu');}
+  $('home-multiplayer').onclick=openMultiplayer;
+  $('multiplayer-back').onclick=()=>menu('home-menu');$('room-back').onclick=()=>menu('multiplayer-menu');
   $('home-worlds').onclick=()=>{entered=false;menu('map-menu');void refreshList('local');};$('home-samples').onclick=()=>{entered=false;menu('map-menu');void refreshList('samples');};
   $('switch-worlds').onclick=()=>void refreshList(listMode==='samples'?'local':'samples');$('worlds-back').onclick=()=>menu('home-menu');
   $('add-world').onclick=()=>{menu('add-menu');$<HTMLInputElement>('world-name').focus();};$('cancel-import').onclick=()=>menu('map-menu');
@@ -222,7 +225,7 @@ async function init() {
     else if(event.code==='Escape'&&ui==='skin-menu')menu(skinReturn);
     else if(event.code==='Escape'&&ui==='language-menu')menu(languageReturn);
     else if(event.code==='Escape'&&ui==='reset-menu')cancelReset();
-    else if(event.code==='Escape'){if(ui==='loading-menu')cancelLoading();else if(ui==='pack-menu')menu(packReturn);else if(ui==='help-menu')menu(helpReturn);else if(ui==='map-menu')menu('home-menu');else if(ui==='add-menu'||ui==='delete-menu')menu('map-menu');else if(ui.endsWith('-menu')&&ui!=='home-menu'&&ui!=='pause-menu')menu('settings-menu');}
+    else if(event.code==='Escape'){if(ui==='loading-menu')cancelLoading();else if(ui==='pack-menu')menu(packReturn);else if(ui==='help-menu')menu(helpReturn);else if(ui==='map-menu')menu('home-menu');else if(ui==='multiplayer-menu')menu('home-menu');else if(ui==='room-menu')menu('multiplayer-menu');else if(ui==='add-menu'||ui==='delete-menu')menu('map-menu');else if(ui.endsWith('-menu')&&ui!=='home-menu'&&ui!=='pause-menu')menu('settings-menu');}
     else if(ui==='map-menu'&&event.target instanceof HTMLElement&&!event.target.closest('input,select')){const buttons=[...document.querySelectorAll<HTMLButtonElement>('[data-world]')];if(event.code==='ArrowDown'||event.code==='ArrowUp'){event.preventDefault();const index=buttons.findIndex(b=>b.dataset.world===selected),next=buttons[Math.max(0,Math.min(buttons.length-1,index+(event.code==='ArrowDown'?1:-1)))];if(next){selectEntry(next.dataset.world!);next.focus();next.scrollIntoView({block:'nearest'});}}else if(event.code==='Enter'&&selected&&event.target.id!=='enter')void openSelected();}
   });
   canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();pause();report('Rendering was interrupted. Please reload the page.');});

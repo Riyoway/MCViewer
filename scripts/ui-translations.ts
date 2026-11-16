@@ -233,4 +233,8 @@ export const translations:Record<string,[string,string,string,string]>={
   "Sneak":["スニーク","潜行","潛行","웅크리기"],
   "Perspective":["視点切り替え","切换视角","切換視角","시점 전환"],
   "Touch button textures:":["タッチボタンのテクスチャ：","触摸按钮纹理：","觸控按鈕材質：","터치 버튼 텍스처:"],
+  "Multiplayer":["マルチプレイ","多人游戏","多人遊戲","멀티플레이"],
+  "Create":["作成","创建","建立","만들기"],
+  "Join":["参加","加入","加入","참가"],
+  "Room code":["ルームコード","房间代码","房間代碼","방 코드"],
 };
