@@ -67,11 +67,13 @@ export class WorldGate {
   resolveWorld(roomWorld: string): GateDecision {
     this.current = roomWorld;
     this.cancelled = false;
-    if(this.decide(roomWorld) === 'local') {
-      this.slots = [];
-      this.expected = 0;
-      this.wanted = 0;
-    }
+    // Any world switch drops the previous world's bytes (guest buffer and
+    // host source alike); a fresh beginTransfer/setSource starts the new one.
+    this.slots = [];
+    this.parts = [];
+    this.source = undefined;
+    this.expected = 0;
+    this.wanted = 0;
     return this.decide(roomWorld);
   }
 

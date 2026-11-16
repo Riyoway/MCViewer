@@ -67,6 +67,26 @@ retry.receiveChunk(0, new Uint8Array([9, 9]));
 retry.receiveChunk(1, new Uint8Array([9, 9]));
 assert.equal(retry.canPlay, true, 're-transfer after cancel can still complete');
 
+// --- 世界切替: transfer→transferでも旧バイトを漏らさない ---
+const sw = new WorldGate({samples, savedIds, roomWorld: 'local:world-a'});
+assert.equal(sw.decision, 'transfer');
+sw.beginTransfer(4, 2);
+sw.receiveChunk(0, new Uint8Array([1, 1]));
+assert.equal(sw.progress(), 0.5);
+assert.equal(sw.transferBytesNeeded, 2);
+assert.equal(sw.resolveWorld('local:world-b'), 'transfer');
+assert.equal(sw.decision, 'transfer');
+assert.equal(sw.progress(), 0, 'switch drops buffered bytes');
+assert.equal(sw.transferBytesNeeded, 0);
+assert.equal(sw.receiveComplete(), false);
+assert.equal(sw.canPlay, false);
+assert.equal(sw.takeBytes(), undefined);
+const swHost = new WorldGate({samples, savedIds, roomWorld: 'local:world-a'});
+swHost.setSource(new Uint8Array([1, 2, 3, 4]), 2);
+assert.equal(swHost.chunkCount, 2);
+swHost.resolveWorld('local:world-b');
+assert.equal(swHost.chunkCount, 0, 'switch drops the host source too');
+
 // --- kind付き: dispatcherは kind で振り分け、素のpresenceは触らない ---
 const request = guest.requestMessage();
 assert.equal(isWorldGateMessage(request), true);
