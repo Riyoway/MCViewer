@@ -8,6 +8,7 @@ export class EditStore {
   }
   private get key(){return `world-edits:${this.name}`;}
   record(position:Vec3,oldId:number,id:number,manifest:Manifest){
+    if(oldId===id)return; // No-op (remote echo/replay of an applied edit) records nothing.
     const key=position.join(',');if(!this.originals.has(key))this.originals.set(key,oldId);
     const original=this.originals.get(key)!;
     if(original===id||original!==0&&id!==0&&manifest.blocks[original].state===manifest.blocks[id].state)this.cells.delete(key);else this.cells.set(key,id?manifest.blocks[id].state:null);

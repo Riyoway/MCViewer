@@ -8,7 +8,7 @@ export type BlockChange={position:Vec3;id:number};
 const left:Record<string,string>={north:'west',west:'south',south:'east',east:'north'};
 export function horizontalFacing(direction:Vec3){return Math.abs(direction[0])>Math.abs(direction[2])?direction[0]>0?'east':'west':direction[2]>0?'south':'north';}
 export class Building {
-  constructor(readonly voxels:Voxels,readonly manifest:Manifest,readonly theme:string,readonly valid:(p:Vec3)=>boolean){}
+  constructor(readonly voxels:Voxels,readonly manifest:Manifest,readonly theme:string,readonly valid:(p:Vec3)=>boolean,private readonly notify?:(changes:BlockChange[])=>void){}
   private block(p:Vec3){return this.manifest.blocks[this.voxels.get(...p)];}
   private next(p:Vec3,face:string){return p.map((n,i)=>n+directions[face][i]) as Vec3;}
   private sturdy(p:Vec3,face:string){const b=this.block(p);return !!b&&!!((b.sturdyFaces??0)&(1<<['east','west','up','down','south','north'].indexOf(face)));}
@@ -60,6 +60,7 @@ export class Building {
     if(props.half==='lower'&&/^(tall_grass|large_fern|sunflower|lilac|rose_bush|peony)$/.test(base.name)){const upper=stateId(this.manifest,base,{...props,half:'upper'});if(!upper)return null;changes.push({position:this.next(position,'up'),id:upper});}
     const min=player.map((n,i)=>n-(i===1?0:RADIUS)),max=player.map((n,i)=>n+(i===1?HEIGHT:RADIUS));
     for(const change of changes){if(!this.valid(change.position))return null;const block=this.manifest.blocks[change.id];if(block.solid)for(const box of block.collision)if(min.every((n,i)=>n<change.position[i]+box.to[i]-1e-6)&&max.every((n,i)=>n>change.position[i]+box.from[i]+1e-6))return null;}
+    this.notify?.(changes);
     return changes;
   }
   destroy(hit:BlockHit):BlockChange[]{
@@ -69,6 +70,7 @@ export class Building {
     if(block.name.endsWith('_door')||/^(tall_grass|large_fern|sunflower|lilac|rose_bush|peony)$/.test(block.name))other=this.next(hit.position,props.half==='upper'?'down':'up');
     if(block.name.endsWith('_bed'))other=this.next(hit.position,props.part==='head'?opposite[props.facing]:props.facing);
     if(other&&this.block(other)?.name===block.name&&this.valid(other))changes.push({position:other,id:0});
+    this.notify?.(changes);
     return changes;
   }
   neighbors(position:Vec3):BlockChange[]{
