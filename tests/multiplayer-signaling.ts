@@ -19,6 +19,12 @@ assert.match(code,/^local:test-world#[0-9a-z]{6}$/);
 assert.deepEqual(parseRoomCode(code),{worldId:'local:test-world',hostNonce:code.split('#')[1]});
 assert.equal(parseRoomCode(createRoomCode('sample:demo',nonce)).hostNonce,nonce);
 
+// Short custom alias codes: the host mints "c"+nonce so "local:<uuid>"
+// never travels in the code; guests echo it and the host resolves it.
+const aliasCode = createRoomCode(`c${createHostNonce()}`);
+assert(aliasCode.length < 20, `alias code must stay short, got ${aliasCode.length} chars`);
+assert.deepEqual(parseRoomCode(aliasCode), {worldId: aliasCode.split('#')[0], hostNonce: aliasCode.split('#')[1]});
+
 // Invalid codes fail with a clear error before any RTC/WebSocket is touched.
 for(const bad of ['','no-separator','#abc123','world#','a b#cdef12','w#!!!','x#ab']) {
   assert.throws(()=>parseRoomCode(bad),/Invalid room code/,JSON.stringify(bad));

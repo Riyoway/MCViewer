@@ -24,7 +24,7 @@ import { Player,lockPointer } from './core/Player';
 import { PlayerModel } from './core/PlayerModel';
 import { Presence, type EnvMessage } from './multiplayer/Presence';
 import { WorldGate, encodeGateMessage, decodeGateMessage, type WorldGateMessage } from './multiplayer/WorldGate';
-import { createRoom, joinRoom, parseRoomCode } from './multiplayer/Room.ts';
+import { createRoom, joinRoom, parseRoomCode, createHostNonce } from './multiplayer/Room.ts';
 import { EditSync, type EditMessage } from './multiplayer/EditSync.ts';
 import type { BlockChange } from './minecraft/Building';
 import { HEIGHT, RADIUS } from './core/Collision';
@@ -93,7 +93,22 @@ async function init() {
     setText($('world-list-title'),mode==='samples'?'Sample Worlds':'Select World');setText($('switch-worlds'),mode==='samples'?'Your Worlds':'Samples');selectEntry(selected);
   }
   function selectEntry(id:string){selected=id;document.querySelectorAll<HTMLElement>('[data-world]').forEach(button=>{const active=button.dataset.world===id;button.classList.toggle('selected',active);button.setAttribute('aria-selected',String(active));});enter.disabled=!id;$<HTMLButtonElement>('delete-world').disabled=!id||listMode==='samples';}
-  function openMultiplayer(): void {entered=false;$('room-error').hidden=true;menu('multiplayer-menu');}
+  function openMultiplayer(): void {entered=false;$('room-error').hidden=true;void refreshMpWorlds();menu('multiplayer-menu');}
+  // Host world picker: samples plus this browser's saved worlds. The select
+  // falls back to the map-menu highlight, then the default sample.
+  function mpWorldEntries(): [string, string][] {
+    const out: [string, string][] = [];
+    for(const [id, data] of Object.entries(samples)) out.push([id, data.name]);
+    for(const record of records.values()) if(!record.sample) out.push([record.id, record.name]);
+    return out;
+  }
+  async function refreshMpWorlds(): Promise<void> {
+    try { for(const record of await store.list()) records.set(record.id, record); } catch { /* storage may be unavailable */ }
+    const select = $<HTMLSelectElement>('mp-world'), keep = select.value || selected || 'tutorial';
+    select.replaceChildren();
+    for(const [id, name] of mpWorldEntries()) { const option = document.createElement('option'); option.value = id; setLiteral(option, name); select.append(option); }
+    if([...select.options].some(option => option.value === keep)) select.value = keep;
+  }
   const showRoomError = (): void => {
     const error = $('room-error');
     error.hidden = false;
@@ -107,10 +122,18 @@ async function init() {
     menu('room-menu');
   };
   $('create-room').onclick=()=>void (async()=>{
-    const worldId = selected || 'tutorial';
+    const picked = $<HTMLSelectElement>('mp-world').value || selected || 'tutorial';
+    const worldId = samples[picked] || records.get(picked) ? picked : 'tutorial';
     $('room-error').hidden=true;
     try {
-      const room = await createRoom(worldId);
+      // Custom ids ("local:<uuid>") never enter the code: the host mints a
+      // short alias and resolves it when the guest's world-request arrives.
+      let codeWorld = worldId;
+      if(!samples[worldId] && records.get(worldId)) {
+        codeWorld = `c${createHostNonce()}`;
+        mpAlias.set(codeWorld, {recordId: worldId, name: records.get(worldId)!.name});
+      }
+      const room = await createRoom(codeWorld);
       mpNonce = room.code.split('#')[1] ?? '';
       mpAcceptAnswer = room.acceptAnswer;
       selected = worldId;
@@ -164,6 +187,10 @@ async function init() {
   // Local matches reload via choose() with zero transfer; custom worlds
   // buffer kind-tagged chunks in the gate and reach play() only at 100%.
   let mpGate: WorldGate | null = null, mpRole: 'host' | 'guest' = 'guest', mpActive = false;
+  // Custom worlds travel under a short host-minted alias (e.g. "cX7k2md")
+  // so room codes stay short; the host resolves alias -> saved record id.
+  const mpAlias = new Map<string, {recordId: string; name: string}>();
+  let mpWorldName = '';
   let mpPeer: RTCPeerConnection | null = null, mpEdit: EditSync | null = null, mpNonce = '';
   let mpAcceptAnswer: ((answer: string) => Promise<RTCDataChannel>) | null = null;
   // Edit identity is separate from presence: the host id derives from the room
@@ -204,6 +231,8 @@ async function init() {
     mpEdit = null;
     mpNonce = '';
     mpRole = 'guest';
+    mpWorldName = '';
+    mpAlias.clear();
     presence?.clear();
     if(mpGate){mpGate.cancel();mpGate = null;}
   };
@@ -226,7 +255,10 @@ async function init() {
     if(!mpGate) return;
     if(mpRole === 'host') { void serveWorld(message); return; }
     try {
-      if(message.kind === 'world-meta') mpGate.beginTransfer(message.total, message.chunks);
+      if(message.kind === 'world-meta') {
+        mpGate.beginTransfer(message.total, message.chunks);
+        if(message.name) { mpWorldName = message.name; setLiteral($('room-world'), message.name); }
+      }
       else if(message.kind === 'world-chunk') {
         if(!(message.data instanceof Uint8Array)) return;
         mpGate.receiveChunk(message.index, message.data);
@@ -243,7 +275,10 @@ async function init() {
     if(message.kind !== 'world-request') return;
     try {
       if(samples[message.worldId] || samples[message.worldId.replace(/^sample:/, '')]) return;
-      const record = records.get(message.worldId);
+      // Short custom aliases resolve through the host's in-memory map, so
+      // full "local:<uuid>" ids never travel in room codes. Full ids still
+      // work for codes minted before aliases existed.
+      const record = records.get(mpAlias.get(message.worldId)?.recordId ?? message.worldId);
       if(!record?.files?.length) return;
       const parts = await Promise.all(record.files.map(async file => new Uint8Array(await file.blob.arrayBuffer())));
       const bytes = parts.length === 1 ? parts[0] : zipSync(Object.fromEntries(record.files.map((file, i) => [file.name, parts[i]])));
@@ -251,7 +286,7 @@ async function init() {
       const gate = new WorldGate({samples: Object.keys(samples), savedIds: [...records.keys()], roomWorld: message.worldId});
       gate.setSource(bytes);
       const send = (msg: WorldGateMessage): void => { if(mpChannel?.readyState === 'open') try { mpChannel.send(encodeGateMessage(msg)); } catch { /* drop on a closing channel */ } };
-      send(gate.metaMessage());
+      send(gate.metaMessage(record.name));
       for(let i = 0; i < gate.chunkCount; i++) send(gate.chunkMessage(i));
     } catch(cause) { report(cause); }
   };
@@ -394,9 +429,15 @@ async function init() {
       if(mpGate.decision==='transfer'){
         const bytes=mpGate.takeBytes();
         if(!bytes){syncMpEnter();return;}
-        records.set(id,{id,name:wid,added:Date.now(),files:[{name:`${id.split(':').pop()??id}.zip`,blob:new Blob([bytes.buffer as ArrayBuffer])}]});
-      }
-      selected=id;
+        // Host-minted aliases ("cXXXXXX") carry no usable id: store the
+        // received world under a fresh local id with the host-sent name.
+        // Full "local:<uuid>" codes (pre-alias) keep the old mapping.
+        const alias = !wid.includes(':');
+        const nid = alias ? `local:${crypto.randomUUID()}` : id;
+        const name = alias ? (mpWorldName || wid) : wid;
+        records.set(nid,{id:nid,name,added:Date.now(),files:[{name:`${nid.split(':').pop()??nid}.zip`,blob:new Blob([bytes.buffer as ArrayBuffer])}]});
+        selected=nid;
+      } else selected=id;
     }
     if(!selected)return;mpGate=null;captureLoading();const opened=await choose(selected);if(opened&&world===opened)play();}
   const play=()=>{if(!player||!worldReady)return;if(mpGate&&!mpGate.canPlay)return;entered=true;menu('playing');document.body.classList.add('playing');document.body.classList.remove('pause-background');$('hud').hidden=false;$('menus').inert=true;hud.hide();canvas.focus({preventScroll:true});setText($('resume'),'Back to World');if(!touch?.enabled&&!player.locked)void player.lock().catch(()=>{/* Keep the world visible; a canvas click retries pointer lock. */});void audio.start().catch(report);};

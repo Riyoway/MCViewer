@@ -8,7 +8,7 @@ export type GateDecision = 'local' | 'transfer';
 
 export type WorldGateMessage =
   | {kind: 'world-request'; worldId: string}
-  | {kind: 'world-meta'; worldId: string; total: number; chunks: number}
+  | {kind: 'world-meta'; worldId: string; total: number; chunks: number; name?: string}
   | {kind: 'world-chunk'; worldId: string; index: number; total: number; data: Uint8Array}
   | {kind: 'world-complete'; worldId: string};
 
@@ -183,8 +183,8 @@ export class WorldGate {
     return {kind: 'world-request', worldId: this.current};
   }
 
-  metaMessage(): WorldGateMessage {
-    return {kind: 'world-meta', worldId: this.current, total: this.source?.length ?? 0, chunks: this.expected};
+  metaMessage(name?: string): WorldGateMessage {
+    return {kind: 'world-meta', worldId: this.current, total: this.source?.length ?? 0, chunks: this.expected, ...(name ? {name} : {})};
   }
 
   chunkMessage(index: number): WorldGateMessage {

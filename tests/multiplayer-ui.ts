@@ -10,15 +10,17 @@ assert(markup.indexOf('id="home-multiplayer"') > markup.indexOf('id="home-sample
 
 // Room flow is wired, not stubbed: create/join enabled, code input +
 // invalid-code slot, signal copy-paste, progress/cancel, room play.
-for (const id of ['create-room', 'join-room', 'room-code-input', 'room-error', 'room-code', 'room-world', 'signal-offer', 'signal-answer', 'signal-connect', 'room-play', 'room-status', 'transfer-progress', 'room-back']) {
+for (const id of ['mp-world', 'create-room', 'join-room', 'room-code-input', 'room-error', 'room-code', 'room-world', 'signal-offer', 'signal-answer', 'signal-connect', 'room-play', 'room-status', 'transfer-progress', 'room-back']) {
   assert(markup.includes(`id="${id}"`), `missing room UI: ${id}`);
 }
 assert(!markup.includes('id="create-room" disabled'), 'create-room must be enabled');
 assert(!markup.includes('id="join-room" disabled'), 'join-room must be enabled');
+assert(markup.indexOf('id="mp-world"') < markup.indexOf('id="room-code-input"'), 'world picker must precede room code');
 
 const main = await readFile('src/main.ts', 'utf8');
 assert(main.includes('openMultiplayer'), 'missing openMultiplayer接点');
 assert(main.includes("menu('multiplayer-menu')"), 'multiplayer-menu unreachable from menu()');
+assert(main.includes("mp-world"), 'create flow must read the multiplayer world picker');
 
 for (const [code] of languages) {
   const data: Catalog = JSON.parse(await readFile(`public/menu/locales/${code}.json`, 'utf8'));
