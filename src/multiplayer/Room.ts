@@ -58,6 +58,28 @@ function resolvePeer(input?: RTCPeerConnection | (() => RTCPeerConnection)): RTC
   return new Factory();
 }
 
+/**
+ * Single-shot manual signaling carries no trickle ICE, so the encoded SDP
+ * must already contain every candidate. Wait for gathering to complete.
+ */
+export function gatherComplete(peer: Pick<RTCPeerConnection, 'iceGatheringState' | 'addEventListener' | 'removeEventListener'>, timeoutMs = 15000): Promise<void> {
+  if(peer.iceGatheringState === 'complete') return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      peer.removeEventListener('icegatheringstatechange', onChange);
+      reject(new Error('Timed out gathering connection candidates.'));
+    }, timeoutMs);
+    const onChange = (): void => {
+      if(peer.iceGatheringState === 'complete') {
+        clearTimeout(timer);
+        peer.removeEventListener('icegatheringstatechange', onChange);
+        resolve();
+      }
+    };
+    peer.addEventListener('icegatheringstatechange', onChange);
+  });
+}
+
 export interface HostRoom {
   code: string;
   /** Base64 offer for manual copy-paste (or auto-exchange). */
@@ -79,6 +101,7 @@ export async function createRoom(worldId: string, opts?: {hostNonce?: string; pe
     const channel = peer.createDataChannel('mc', {ordered: true});
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
+    await gatherComplete(peer);
     return {
       code,
       offer: encodeSignal(peer.localDescription ?? offer),
@@ -124,6 +147,7 @@ export async function joinRoom(code: string, offer: string, peer?: RTCPeerConnec
     const dataChannel = await channel;
     const answer = await connection.createAnswer();
     await connection.setLocalDescription(answer);
+    await gatherComplete(connection);
     return {worldId, answer: encodeSignal(connection.localDescription ?? answer), channel: dataChannel, peer: connection};
   } catch(cause) {
     clearTimeout(timer);

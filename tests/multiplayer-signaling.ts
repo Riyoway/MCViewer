@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {encodeSignal,decodeSignal,getSignalUrl,useAutoSignal,exchangeInvite} from '../src/multiplayer/Signaling.ts';
-import {createHostNonce,createRoomCode,parseRoomCode,createRoom,joinRoom} from '../src/multiplayer/Room.ts';
+import {createHostNonce,createRoomCode,parseRoomCode,createRoom,joinRoom,gatherComplete} from '../src/multiplayer/Room.ts';
 
 // offer->answer round-trip as pure base64 payloads (no RTCPeerConnection in Node).
 const offer={type:'offer',sdp:'v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\n'};
@@ -34,7 +34,35 @@ assert.throws(()=>decodeSignal(''),/Invalid signal/);
 await assert.rejects(joinRoom('bad-code',encodeSignal(answer)),/Invalid room code/);
 await assert.rejects(createRoom(''),/Invalid/);
 
-// Browser RTC binding stays isolated: Node has no RTCPeerConnection.
+// gatherComplete: single-shot SDP must wait for ICE (no trickle). Fake peer.
+const fakePeer = () => {
+  const listeners = new Map<string, Set<() => void>>();
+  const peer = {
+    state: 'gathering',
+    get iceGatheringState(): string { return peer.state; },
+    addEventListener(type: string, fn: () => void): void {
+      if(!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type)!.add(fn);
+    },
+    removeEventListener(type: string, fn: () => void): void { listeners.get(type)?.delete(fn); },
+    fire(): void { listeners.get('icegatheringstatechange')?.forEach(fn => fn()); },
+  };
+  return peer;
+};
+{
+  const done = fakePeer();
+  done.state = 'complete';
+  await gatherComplete(done as unknown as RTCPeerConnection, 50);
+  const waiting = fakePeer();
+  let resolved = false;
+  const pending = gatherComplete(waiting as unknown as RTCPeerConnection, 5000).then(() => { resolved = true; });
+  waiting.state = 'complete';
+  waiting.fire();
+  await pending;
+  assert.equal(resolved, true, 'gatherComplete resolves on icegatheringstatechange');
+  const stuck = fakePeer();
+  await assert.rejects(gatherComplete(stuck as unknown as RTCPeerConnection, 50), /Timed out gathering/);
+}
 assert.equal(typeof (globalThis as {RTCPeerConnection?: unknown}).RTCPeerConnection,'undefined');
 await assert.rejects(createRoom('local:test-world'),/RTCPeerConnection is unavailable/);
 

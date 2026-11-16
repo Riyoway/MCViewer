@@ -19,6 +19,9 @@ export function nativeOptions(root:HTMLElement){
     field.addEventListener('input',update);window.addEventListener('resize',update);refresh.push(update);
   }
   for(const field of root.querySelectorAll<HTMLInputElement|HTMLSelectElement>('select,input[type=checkbox]')){
+    // The multiplayer world picker keeps its native dropdown: cycling is
+    // unusable for 14+ samples plus saved worlds.
+    if(field.id === 'mp-world') continue;
     const label=field.closest('label');if(!label)continue;
     const name=label.dataset.optionName??Array.from(label.childNodes).filter(node=>node!==field).map(node=>node.textContent).join('').trim();
     for(const node of [...label.childNodes])if(node!==field)node.remove();

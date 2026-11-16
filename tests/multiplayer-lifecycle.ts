@@ -90,6 +90,9 @@ import {languages, type Catalog} from '../src/ui/Language.ts';
   const offer = encodeSignal({type: 'offer', sdp: 'v=0'});
   const lateBoom: any = {
     closed: 0,
+    iceGatheringState: 'complete',
+    addEventListener() {},
+    removeEventListener() {},
     async setRemoteDescription(this: any) { this.ondatachannel?.({channel: {readyState: 'open'}}); },
     async createAnswer() { throw new Error('late boom'); },
     async setLocalDescription() {},
@@ -99,6 +102,9 @@ import {languages, type Catalog} from '../src/ui/Language.ts';
   assert.equal(lateBoom.closed, 1, 'guest late-throw closes the peer (host parity)');
   const earlyBoom: any = {
     closed: 0,
+    iceGatheringState: 'complete',
+    addEventListener() {},
+    removeEventListener() {},
     async setRemoteDescription() { throw new Error('early boom'); },
     close() { this.closed++; },
   };
@@ -106,6 +112,9 @@ import {languages, type Catalog} from '../src/ui/Language.ts';
   assert.equal(earlyBoom.closed, 1, 'guest early-throw closes the peer too');
   const ok: any = {
     closed: 0,
+    iceGatheringState: 'complete',
+    addEventListener() {},
+    removeEventListener() {},
     async setRemoteDescription(this: any) { this.ondatachannel?.({channel: {readyState: 'open'}}); },
     async createAnswer() { return {type: 'answer', sdp: 'v=0'}; },
     localDescription: {type: 'answer', sdp: 'v=0'},
