@@ -20,7 +20,7 @@
     "fluid-assets": "tsx scripts/fluid-assets.ts",
     "menu-assets": "tsx scripts/viewer-menu-assets.ts",
     "viewer-data": "tsx scripts/viewer-data.ts",
-    "test": "tsc --noEmit && tsx tests/core.ts && tsx tests/touch.ts && tsx tests/player-rendering.ts && tsx tests/skins.ts && tsx tests/multiplayer-ui.ts && tsx tests/multiplayer-signaling.ts && tsx tests/multiplayer-presence.ts && tsx tests/multiplayer-edits.ts && tsx tests/multiplayer-gate.ts && tsx tests/multiplayer-lifecycle.ts && tsx tests/language.ts && tsc --project tsconfig.hosting.json && tsx tests/hosting.ts",
+    "test": "tsc --noEmit && tsx tests/core.ts && tsx tests/touch.ts && tsx tests/player-rendering.ts && tsx tests/skins.ts && tsx tests/multiplayer-ui.ts && tsx tests/multiplayer-signaling.ts && tsx tests/multiplayer-presence.ts && tsx tests/multiplayer-edits.ts && tsx tests/multiplayer-gate.ts && tsx tests/multiplayer-lifecycle.ts && tsx tests/multiplayer-wire.ts && tsx tests/language.ts && tsc --project tsconfig.hosting.json && tsx tests/hosting.ts",
     "test:touch-browser": "node tests/touch-browser.cjs",
     "test:player-browser": "node tests/player-browser.cjs",
     "test:mobile-home-browser": "node tests/mobile-home-browser.cjs",

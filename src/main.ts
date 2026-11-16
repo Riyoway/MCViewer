@@ -23,7 +23,12 @@ import { AssetManager, assetUrl } from './core/AssetManager';
 import { Player,lockPointer } from './core/Player';
 import { PlayerModel } from './core/PlayerModel';
 import { Presence, type EnvMessage } from './multiplayer/Presence';
-import { WorldGate, isWorldGateMessage, type WorldGateMessage } from './multiplayer/WorldGate';
+import { WorldGate, encodeGateMessage, decodeGateMessage, type WorldGateMessage } from './multiplayer/WorldGate';
+import { createRoom, joinRoom, parseRoomCode } from './multiplayer/Room.ts';
+import { EditSync, type EditMessage } from './multiplayer/EditSync.ts';
+import type { BlockChange } from './minecraft/Building';
+import { HEIGHT, RADIUS } from './core/Collision';
+import { zipSync } from 'fflate';
 import { AudioManager } from './core/AudioManager';
 import { World } from './minecraft/WorldLoader';
 import { Sky } from './world/Sky';
@@ -88,14 +93,98 @@ async function init() {
     setText($('world-list-title'),mode==='samples'?'Sample Worlds':'Select World');setText($('switch-worlds'),mode==='samples'?'Your Worlds':'Samples');selectEntry(selected);
   }
   function selectEntry(id:string){selected=id;document.querySelectorAll<HTMLElement>('[data-world]').forEach(button=>{const active=button.dataset.world===id;button.classList.toggle('selected',active);button.setAttribute('aria-selected',String(active));});enter.disabled=!id;$<HTMLButtonElement>('delete-world').disabled=!id||listMode==='samples';}
-  function openMultiplayer(): void {entered=false;menu('multiplayer-menu');}
+  function openMultiplayer(): void {entered=false;$('room-error').hidden=true;menu('multiplayer-menu');}
+  const showRoomError = (): void => {
+    const error = $('room-error');
+    error.hidden = false;
+    setText(error, 'Invalid room code');
+  };
+  const showRoom = (code: string, worldId: string): void => {
+    setLiteral($('room-code'), code);
+    setLiteral($('room-world'), samples[worldId]?.name ?? records.get(worldId)?.name ?? worldId);
+    setText($('room-status'), 'Waiting for connection...');
+    $<HTMLProgressElement>('transfer-progress').hidden = true;
+    menu('room-menu');
+  };
+  $('create-room').onclick=()=>void (async()=>{
+    const worldId = selected || 'tutorial';
+    $('room-error').hidden=true;
+    try {
+      const room = await createRoom(worldId);
+      mpNonce = room.code.split('#')[1] ?? '';
+      mpAcceptAnswer = room.acceptAnswer;
+      selected = worldId;
+      mpRole = 'host';
+      setLiteral($<HTMLTextAreaElement>('signal-offer'), room.offer);
+      setLiteral($<HTMLTextAreaElement>('signal-answer'), '');
+      mpGate = new WorldGate({samples: Object.keys(samples), savedIds: records.keys(), roomWorld: worldId});
+      syncMpEnter();
+      attachMpChannel(room.channel, 'host', room.peer);
+      showRoom(room.code, worldId);
+    } catch(cause) { report(cause); }
+  })().catch(report);
+  $('join-room').onclick=()=>{
+    const raw = $<HTMLInputElement>('room-code-input').value.trim();
+    $('room-error').hidden=true;
+    let worldId: string;
+    try { worldId = parseRoomCode(raw).worldId; }
+    catch { showRoomError(); return; }
+    mpNonce = raw.split('#')[1] ?? '';
+    mpRole = 'guest';
+    setLiteral($<HTMLTextAreaElement>('signal-offer'), '');
+    setLiteral($<HTMLTextAreaElement>('signal-answer'), '');
+    gateJoinWorld(worldId);
+    syncMpProgress();
+    showRoom(raw, worldId);
+  };
+  // Host pastes the guest answer; guest pastes the host offer and receives
+  // the answer to copy back. Either side lands in attachMpChannel.
+  $('signal-connect').onclick=()=>void (async()=>{
+    try {
+      if(mpRole === 'host' && mpAcceptAnswer) {
+        await mpAcceptAnswer($<HTMLTextAreaElement>('signal-answer').value.trim());
+        mpAcceptAnswer = null;
+        setText($('room-status'), 'World ready');
+      } else if(mpRole === 'guest' && !mpChannel) {
+        const code = $('room-code').textContent?.trim() ?? '';
+        const room = await joinRoom(code, $<HTMLTextAreaElement>('signal-offer').value.trim());
+        setLiteral($<HTMLTextAreaElement>('signal-answer'), room.answer);
+        $<HTMLTextAreaElement>('signal-answer').select();
+        attachMpChannel(room.channel, 'guest', room.peer);
+        setText($('room-status'), 'Waiting for connection...');
+      }
+      syncMpEnter();
+    } catch(cause) { setLiteral($('room-status'), String(cause instanceof Error ? cause.message : cause)); }
+  })().catch(report);
+  $('room-play').onclick=()=>void openSelected();
+  $('home-multiplayer').onclick=openMultiplayer;
+  $('multiplayer-back').onclick=()=>menu('home-menu');
+  $('room-back').onclick=()=>{quitMpSession();enter.disabled=!selected;menu('multiplayer-menu');};
   // Task 5 seam: gate multiplayer join on full world receipt.
   // Local matches reload via choose() with zero transfer; custom worlds
   // buffer kind-tagged chunks in the gate and reach play() only at 100%.
   let mpGate: WorldGate | null = null, mpRole: 'host' | 'guest' = 'guest', mpActive = false;
+  let mpPeer: RTCPeerConnection | null = null, mpEdit: EditSync | null = null, mpNonce = '';
+  let mpAcceptAnswer: ((answer: string) => Promise<RTCDataChannel>) | null = null;
+  // Edit identity is separate from presence: the host id derives from the room
+  // code (known to both sides), so guests can filter on it without a handshake.
+  const mpHostId = (): string => `host:${mpNonce}`;
+  // Task 5 seam: gate multiplayer join on full world receipt.
+  // Local matches reload via choose() with zero transfer; custom worlds
+  // buffer kind-tagged chunks in the gate and reach play() only at 100%.
   // Task 6: progress re-enables enter; nothing to do without an active gate.
   const syncMpEnter = (): void => {
-    if(mpGate) enter.disabled = !mpGate.canEnter;
+    if(mpGate) {
+      enter.disabled = !mpGate.canEnter;
+      $<HTMLButtonElement>('room-play').disabled = !mpGate.canEnter;
+    }
+  };
+  const syncMpProgress = (): void => {
+    const bar = $<HTMLProgressElement>('transfer-progress');
+    if(!mpGate || mpRole !== 'guest' || mpGate.decision !== 'transfer') { bar.hidden = true; return; }
+    bar.hidden = false;
+    bar.value = Math.round(mpGate.progress() * 100);
+    setText($('room-status'), mpGate.canPlay ? 'World ready' : 'Receiving world...');
   };
   const gateJoinWorld = (roomWorldId: string): 'local' | 'transfer' => {
     mpGate = new WorldGate({samples: Object.keys(samples), savedIds: records.keys(), roomWorld: roomWorldId});
@@ -107,8 +196,13 @@ async function init() {
   // channel, or gate bytes survive. Touch/mobile share the same menu() path.
   const quitMpSession = (): void => {
     mpActive = false;
-    try{mpChannel?.close();}catch{/* already closed */}
+    if(mpChannel){mpChannel.onopen=null;mpChannel.onclose=null;mpChannel.onerror=null;mpChannel.onmessage=null;try{mpChannel.close();}catch{/* already closed */}}
     mpChannel = null;
+    try{mpPeer?.close();}catch{/* already closed */}
+    mpPeer = null;
+    mpAcceptAnswer = null;
+    mpEdit = null;
+    mpNonce = '';
     mpRole = 'guest';
     presence?.clear();
     if(mpGate){mpGate.cancel();mpGate = null;}
@@ -125,24 +219,67 @@ async function init() {
     menu('map-menu');
     void refreshList();
   };
-  // Task 6 guest path: world-meta/world-chunk feed the gate; each chunk
-  // re-syncs enter, so play stays blocked until 100%.
-  // shortcut: guest receive only (host world-request serving unwired);
-  // upgrade when the host WorldStore-bytes source lands.
+  // Guest path: world-meta/world-chunk feed the gate; each chunk re-syncs
+  // enter and progress, so play stays blocked until 100%. A zero-byte
+  // meta can never complete, so it drops the session loudly instead.
   const handleMpWorld = (message: WorldGateMessage): void => {
-    if(!mpGate || mpRole === 'host') return;
-    if(message.kind === 'world-meta') mpGate.beginTransfer(message.total, message.chunks);
-    else if(message.kind === 'world-chunk') {
-      if(!(message.data instanceof Uint8Array)) return;
-      mpGate.receiveChunk(message.index, message.data);
-    }
-    else return;
+    if(!mpGate) return;
+    if(mpRole === 'host') { void serveWorld(message); return; }
+    try {
+      if(message.kind === 'world-meta') mpGate.beginTransfer(message.total, message.chunks);
+      else if(message.kind === 'world-chunk') {
+        if(!(message.data instanceof Uint8Array)) return;
+        mpGate.receiveChunk(message.index, message.data);
+      }
+      else return;
+    } catch(cause) { report(cause); leaveMultiplayer('Connection to the host was lost'); return; }
     syncMpEnter();
+    syncMpProgress();
   };
-  // Task 6 seam: route an open Task 2 DataChannel into Presence.
-  const attachMpChannel=(channel:RTCDataChannel|null,role:'host'|'guest'='guest')=>{mpChannel=channel;mpRole=role;mpActive=!!channel;if(channel){channel.onclose=()=>{if(mpChannel!==channel)return;leaveMultiplayer(entered&&worldReady?'Host left the session':'Connection to the host was lost');};channel.onerror=()=>{if(mpChannel!==channel)return;leaveMultiplayer('Connection to the host was lost');};const prev=channel.onmessage;channel.onmessage=event=>{if(prev)try{prev.call(channel,event);}catch{/* keep prior handler failures local */}let data:unknown;try{data=JSON.parse(String(event.data));}catch{/* malformed payload is dropped */return;}if(data&&typeof data==='object'){const kind=(data as {kind?:unknown}).kind;if(kind==='env'){const env=presence?.applyHostEnv(data as EnvMessage);if(env){sky.time=env.time;if(weather.mode!==env.weather)weather.setMode(env.weather);}return;}if(isWorldGateMessage(data)){handleMpWorld(data);return;}}try{presence?.applyRemote(data as {id:string;x:number;y:number;z:number;yaw:number;pitch:number;seq:number});}catch{/* malformed presence is dropped */}};}};
-  $('home-multiplayer').onclick=openMultiplayer;
-  $('multiplayer-back').onclick=()=>menu('home-menu');$('room-back').onclick=()=>menu('multiplayer-menu');
+  // Host path: serve the requested world from WorldStore bytes as base64
+  // meta + chunks over the JSON transport. Samples need no serving: every
+  // guest resolves them locally through its own asset catalog.
+  const serveWorld = async (message: WorldGateMessage): Promise<void> => {
+    if(message.kind !== 'world-request') return;
+    try {
+      if(samples[message.worldId] || samples[message.worldId.replace(/^sample:/, '')]) return;
+      const record = records.get(message.worldId);
+      if(!record?.files?.length) return;
+      const parts = await Promise.all(record.files.map(async file => new Uint8Array(await file.blob.arrayBuffer())));
+      const bytes = parts.length === 1 ? parts[0] : zipSync(Object.fromEntries(record.files.map((file, i) => [file.name, parts[i]])));
+      if(!bytes.length || mpChannel?.readyState !== 'open') return;
+      const gate = new WorldGate({samples: Object.keys(samples), savedIds: [...records.keys()], roomWorld: message.worldId});
+      gate.setSource(bytes);
+      const send = (msg: WorldGateMessage): void => { if(mpChannel?.readyState === 'open') try { mpChannel.send(encodeGateMessage(msg)); } catch { /* drop on a closing channel */ } };
+      send(gate.metaMessage());
+      for(let i = 0; i < gate.chunkCount; i++) send(gate.chunkMessage(i));
+    } catch(cause) { report(cause); }
+  };
+  // Host-side AABB guard mirroring Building's player-overlap rule, so the
+  // host validate hook rejects exactly the edits the host could never place.
+  const mpOverlapsPlayer = (change: BlockChange): boolean => {
+    if(!player || !world) return false;
+    const block = assets.manifest.blocks[change.id];
+    if(!block?.solid) return false;
+    const [px, py, pz] = player.position, min = [px - RADIUS, py, pz - RADIUS], max = [px + RADIUS, py + HEIGHT, pz + RADIUS];
+    return min.every((n, i) => n < change.position[i] + 1 - 1e-6) && max.every((n, i) => n > change.position[i] + 1e-6);
+  };
+  // Host rejected a guest proposal (validate failed, not echo/replay): echo
+  // the current authoritative voxels so the proposer reverts and peers converge.
+  const correctGuestEdit = (data: unknown): void => {
+    if(mpRole !== 'host' || !mpEdit || !world) return;
+    const message = data as Partial<EditMessage>;
+    if(message?.kind !== 'edit' || typeof message.sender !== 'string' || !message.sender || !Array.isArray(message.changes)) return;
+    const corrections: BlockChange[] = [];
+    for(const change of message.changes) {
+      if(!change || !Array.isArray(change.position) || !change.position.every(Number.isInteger)) continue;
+      const current = world.voxels.get(change.position[0], change.position[1], change.position[2]);
+      if(current !== change.id) corrections.push({position: [...change.position] as Vec3, id: current});
+    }
+    if(corrections.length) mpEdit.broadcastEdit(corrections);
+  };
+  // Route an open Task 2 DataChannel into Presence, WorldGate and EditSync.
+  const attachMpChannel=(channel:RTCDataChannel|null,role:'host'|'guest'='guest',peer:RTCPeerConnection|null=null)=>{mpChannel=channel;mpRole=role;mpPeer=peer;mpActive=!!channel;if(channel){channel.onopen=()=>{if(mpChannel!==channel)return;if(mpRole==='guest'&&mpGate&&mpGate.decision==='transfer'){try{channel.send(encodeGateMessage(mpGate.requestMessage()));}catch{/* request retries on the next open */}setText($('room-status'),'Receiving world...');}else setText($('room-status'),'World ready');syncMpEnter();};channel.onclose=()=>{if(mpChannel!==channel)return;leaveMultiplayer(entered&&worldReady?'Host left the session':'Connection to the host was lost');};channel.onerror=()=>{if(mpChannel!==channel)return;leaveMultiplayer('Connection to the host was lost');};const prev=channel.onmessage;channel.onmessage=event=>{if(prev)try{prev.call(channel,event);}catch{/* keep prior handler failures local */}let data:unknown;try{data=JSON.parse(String(event.data));}catch{/* malformed payload is dropped */return;}if(data&&typeof data==='object'){const gate=decodeGateMessage(data);if(gate){handleMpWorld(gate);return;}const kind=(data as {kind?:unknown}).kind;if(kind==='env'){const env=presence?.applyHostEnv(data as EnvMessage);if(env){sky.time=env.time;if(weather.mode!==env.weather)weather.setMode(env.weather);}return;}if(kind==='edit'){if(!mpEdit?.applyRemoteEdit(data as EditMessage))correctGuestEdit(data);return;}}try{presence?.applyRemote(data as {id:string;x:number;y:number;z:number;yaw:number;pitch:number;seq:number});}catch{/* malformed presence is dropped */}};}};
   $('home-worlds').onclick=()=>{entered=false;menu('map-menu');void refreshList('local');};$('home-samples').onclick=()=>{entered=false;menu('map-menu');void refreshList('samples');};
   $('switch-worlds').onclick=()=>void refreshList(listMode==='samples'?'local':'samples');$('worlds-back').onclick=()=>menu('home-menu');
   $('add-world').onclick=()=>{menu('add-menu');$<HTMLInputElement>('world-name').focus();};$('cancel-import').onclick=()=>menu('map-menu');
@@ -225,7 +362,7 @@ async function init() {
       else {if(!record)throw new Error('Saved world not found');source=new ImportedWorld();pendingImport=source;source.progress=message=>{if(token===request)setMessage(loading,message);};imported=await source.load(record,assets.manifest);if(token!==request){source.dispose();return;}record.version=imported.version;if(imported.icon)record.icon=new Blob([imported.icon],{type:'image/png'});assets.manifest.worlds[name]=imported.manifest;}
       if(pack){const original=assets.manifest.worlds[name].environment??{sun:'sun.png',moon:'moon.png',clouds:'clouds.png'};assets.manifest.worlds[name].environment={...original,...pack.environment};await sky.loadEnvironment(assets.manifest.worlds[name].environment!);}
       if(token!==request){source?.dispose();return;}
-      held.clear();hud.selectWorld(name,theme);world=new World(assets,name,source);pendingImport=undefined;world.radius=config.view;scene.add(world.root);sky.select(name);const current=world;
+      held.clear();hud.selectWorld(name,theme);world=new World(assets,name,source,changes=>{try{mpEdit?.broadcastEdit(changes);}catch{/* drop edits when the channel is closing */}});pendingImport=undefined;world.radius=config.view;scene.add(world.root);sky.select(name);const current=world;
       await Promise.all([current.start((done,total)=>{if(token===request){setMessage(loading,`Loading world... ${Math.round(done/Math.max(1,total)*100)}%`);const bar=$<HTMLProgressElement>('load-progress');bar.max=total||1;bar.value=done;}}),weather.select(name,imported?.climate)]);
       if(token!==request)return;
       if(!player){player=new Player(camera,model,current.collision,canvas,locked=>{
@@ -234,13 +371,34 @@ async function init() {
       });player.viewModel.add(held.root);viewRenderer.attach(player.viewModel);}player.collision=current.collision;player.movement.collision=current.collision;
       // Remote follow: one PlayerModel replica per peer, posed only (local Movement/Collision untouched).
       if(!presence)presence=new Presence(crypto.randomUUID(),text=>{if(mpChannel?.readyState==='open')try{mpChannel.send(text);}catch{/* drop presence on a closing channel */}},{createModel:()=>{const texture=((model.head.children[0] as Mesh).material as MeshBasicMaterial).map!;const replica=PlayerModel.fromSkin(texture.image.width,texture.image.height,assets.skinMaterial(texture),assets.skinMaterial(texture));remoteRoot.add(replica.root);return replica;}});
+      // Co-edit identity follows the room, not the world: the host id derives
+      // from the room code (guests filter on it), guests mint a fresh id per
+      // load so a rejoin never replays stale host seq state. Send is
+      // channel-guarded, so single-player loads broadcast nowhere.
+      const editId = mpRole === 'host' ? mpHostId() : `guest:${crypto.randomUUID()}`;
+      const sendEdit = (text: string): void => { if(mpChannel?.readyState === 'open') try { mpChannel.send(text); } catch { /* drop edits on a closing channel */ } };
+      mpEdit = mpRole === 'host'
+        ? new EditSync(editId, sendEdit, {isHost: true, hostId: editId, apply: changes => { const target = world; return target ? target.applyRemote(changes) : false; }, validate: changes => changes.every(change => !mpOverlapsPlayer(change))})
+        : new EditSync(editId, sendEdit, {isHost: false, hostId: mpHostId(), apply: changes => { const target = world; return target ? target.applyRemote(changes) : false; }});
       worldReady=true;spawn();audio.select(samples[name]?name:'tutorial');applySettings();enter.disabled=false;setLiteral(loading,'');
       if(imported?.warnings.length)console.info('World import:',imported.warnings);
       return current;
     }catch(cause){source?.dispose();if(pendingImport===source)pendingImport=undefined;if(token===request){document.exitPointerLock?.();report(cause);menu('map-menu');void refreshList();}}
   }
   function captureLoading(){if(touch?.enabled||touchDevice())return;const token=request+1;void lockPointer(canvas).then(()=>{if(token!==request)document.exitPointerLock?.();}).catch(()=>{/* The canvas click can retry if this browser requires another gesture. */});}
-  async function openSelected(){if(!selected)return;if(mpGate&&mpGate.decision==='transfer'){const bytes=mpGate.takeBytes();if(!bytes){syncMpEnter();return;}records.set(selected,{id:selected,name:mpGate.roomWorld||selected,added:Date.now(),files:[{name:`${selected.split(':').pop()??selected}.zip`,blob:new Blob([bytes.buffer as ArrayBuffer])}]});}mpGate=null;captureLoading();const opened=await choose(selected);if(opened&&world===opened)play();}
+  // Transfer bytes land on the room world, never on the highlighted entry:
+  // the gate id is the join contract, `selected` is just list state.
+  async function openSelected(){
+    if(mpGate?.roomWorld){
+      const wid = mpGate.roomWorld, id = wid.startsWith('sample:') ? wid.slice(7) : wid;
+      if(mpGate.decision==='transfer'){
+        const bytes=mpGate.takeBytes();
+        if(!bytes){syncMpEnter();return;}
+        records.set(id,{id,name:wid,added:Date.now(),files:[{name:`${id.split(':').pop()??id}.zip`,blob:new Blob([bytes.buffer as ArrayBuffer])}]});
+      }
+      selected=id;
+    }
+    if(!selected)return;mpGate=null;captureLoading();const opened=await choose(selected);if(opened&&world===opened)play();}
   const play=()=>{if(!player||!worldReady)return;if(mpGate&&!mpGate.canPlay)return;entered=true;menu('playing');document.body.classList.add('playing');document.body.classList.remove('pause-background');$('hud').hidden=false;$('menus').inert=true;hud.hide();canvas.focus({preventScroll:true});setText($('resume'),'Back to World');if(!touch?.enabled&&!player.locked)void player.lock().catch(()=>{/* Keep the world visible; a canvas click retries pointer lock. */});void audio.start().catch(report);};
   enter.addEventListener('click',()=>void openSelected());$('resume').addEventListener('click',play);
   const cancelLoading=()=>{request++;document.exitPointerLock?.();pendingImport?.dispose();pendingImport=undefined;quitMpSession();worldReady=false;if(world){scene.remove(world.root);world.dispose();world=null;}entered=false;menu('map-menu');void refreshList();};$('cancel-loading').onclick=cancelLoading;
@@ -284,7 +442,7 @@ async function init() {
     else if(event.code==='Escape'&&ui==='skin-menu')menu(skinReturn);
     else if(event.code==='Escape'&&ui==='language-menu')menu(languageReturn);
     else if(event.code==='Escape'&&ui==='reset-menu')cancelReset();
-    else if(event.code==='Escape'){if(ui==='loading-menu')cancelLoading();else if(ui==='pack-menu')menu(packReturn);else if(ui==='help-menu')menu(helpReturn);else if(ui==='map-menu')menu('home-menu');else if(ui==='multiplayer-menu')menu('home-menu');else if(ui==='room-menu')menu('multiplayer-menu');else if(ui==='add-menu'||ui==='delete-menu')menu('map-menu');else if(ui.endsWith('-menu')&&ui!=='home-menu'&&ui!=='pause-menu')menu('settings-menu');}
+    else if(event.code==='Escape'){if(ui==='loading-menu')cancelLoading();else if(ui==='pack-menu')menu(packReturn);else if(ui==='help-menu')menu(helpReturn);else if(ui==='map-menu')menu('home-menu');else if(ui==='multiplayer-menu')menu('home-menu');else if(ui==='room-menu'){quitMpSession();enter.disabled=!selected;menu('multiplayer-menu');}else if(ui==='add-menu'||ui==='delete-menu')menu('map-menu');else if(ui.endsWith('-menu')&&ui!=='home-menu'&&ui!=='pause-menu')menu('settings-menu');}
     else if(ui==='map-menu'&&event.target instanceof HTMLElement&&!event.target.closest('input,select')){const buttons=[...document.querySelectorAll<HTMLButtonElement>('[data-world]')];if(event.code==='ArrowDown'||event.code==='ArrowUp'){event.preventDefault();const index=buttons.findIndex(b=>b.dataset.world===selected),next=buttons[Math.max(0,Math.min(buttons.length-1,index+(event.code==='ArrowDown'?1:-1)))];if(next){selectEntry(next.dataset.world!);next.focus();next.scrollIntoView({block:'nearest'});}}else if(event.code==='Enter'&&selected&&event.target.id!=='enter')void openSelected();}
   });
   canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();pause();report('Rendering was interrupted. Please reload the page.');});

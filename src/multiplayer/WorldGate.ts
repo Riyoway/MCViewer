@@ -20,6 +20,55 @@ export function isWorldGateMessage(value: unknown): value is WorldGateMessage {
   return KINDS.has((value as {kind?: unknown}).kind as string);
 }
 
+function toBase64(data: Uint8Array): string {
+  const buffer = (globalThis as {Buffer?: {from(data: Uint8Array): {toString(encoding: string): string}}}).Buffer;
+  if(buffer) return buffer.from(data).toString('base64');
+  let binary = '';
+  for(const byte of data) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function fromBase64(text: string): Uint8Array {
+  const buffer = (globalThis as {Buffer?: {from(data: string, encoding: string): Uint8Array}}).Buffer;
+  if(buffer) return new Uint8Array(buffer.from(text, 'base64'));
+  const binary = atob(text);
+  const out = new Uint8Array(binary.length);
+  for(let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+// JSON transport cannot carry Uint8Array (it degrades to a numeric object),
+// so chunk bytes travel as base64 text and decode back before receiveChunk.
+export function encodeGateMessage(message: WorldGateMessage): string {
+  return JSON.stringify(message.kind === 'world-chunk'
+    ? {...message, data: toBase64(message.data)}
+    : message);
+}
+
+/** Decode a wire string (or pass through an in-memory message); null when not a world message. */
+export function decodeGateMessage(raw: unknown): WorldGateMessage | null {
+  let value: unknown = raw;
+  if(typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if(!isWorldGateMessage(value)) return null;
+  if(value.kind === 'world-chunk') {
+    const data = (value as {data?: unknown}).data;
+    if(data instanceof Uint8Array) return value;
+    if(typeof data !== 'string') return null;
+    try {
+      return {...value, data: fromBase64(data)};
+    } catch {
+      return null;
+    }
+  }
+  return value;
+}
+
 /** Host-side split of WorldStore bytes into fixed chunks (last may be short). */
 export function chunkData(data: Uint8Array, chunkSize: number): Uint8Array[] {
   if(!Number.isInteger(chunkSize) || chunkSize <= 0) throw new Error(`Invalid chunk size: expected a positive integer, got ${chunkSize}.`);
@@ -145,9 +194,10 @@ export class WorldGate {
   // --- guest side: accumulate chunks, gate play, hand off at 100% ---
 
   beginTransfer(total: number, chunks = 0): void {
+    if(!Number.isFinite(total) || total <= 0) throw new Error(`Invalid transfer: expected a positive byte total, got ${total}.`);
     this.slots = chunks > 0 ? new Array(chunks).fill(undefined) : [];
     this.expected = chunks;
-    this.wanted = Math.max(0, Math.floor(total));
+    this.wanted = Math.floor(total);
     this.cancelled = false;
   }
 

@@ -29,10 +29,10 @@ export class World {
   readonly edits:EditStore;readonly building:Building;private terrainTiles=new Set<number>();private dirty=new Set<string>();
   private worker?:Worker;private job?:EditJob;private revision=0;private lightEdits=new Map<string,Vec3>();private ready:EditResult['meshes']=[];
   radius=6;error='';
-  constructor(readonly assets:AssetManager,readonly name:string,private source?:WorldSource) {
+  constructor(readonly assets:AssetManager,readonly name:string,private source?:WorldSource,private onEdit?:(changes:BlockChange[])=>void) {
     this.data=assets.manifest.worlds[name];if(!this.data)throw new Error(`No worlds found: ${name}`);
     this.collision=new Collision(this.voxels,assets.manifest.blocks);
-    this.edits=new EditStore(name);this.building=new Building(this.voxels,assets.manifest,this.data.theme??(name.startsWith('tutorial')?'vanilla':name),p=>this.validPosition(p));
+    this.edits=new EditStore(name);this.building=new Building(this.voxels,assets.manifest,this.data.theme??(name.startsWith('tutorial')?'vanilla':name),p=>this.validPosition(p),changes=>this.onEdit?.(changes));
     for(const block of assets.manifest.blocks)if(block){for(const tile of [...block.tiles,...block.fluidTiles??[]])this.terrainTiles.add(tile);for(const element of block.elements)for(const face of Object.values(element.faces))if(face)this.terrainTiles.add(face.tile);}
     for(const column of this.data.chunks)this.columns.set(`${column.origin[0]/16},${column.origin[2]/16}`,column);
     this.collision.loaded=(x,z)=>this.loaded.has(`${Math.floor(x/16)},${Math.floor(z/16)}`);
@@ -122,6 +122,8 @@ export class World {
   private validPosition(p:Vec3){const bounds=this.data.bounds??{min:[-Infinity,0,-Infinity],max:[Infinity,320,Infinity]};return p.every((n,i)=>Number.isInteger(n)&&n>=bounds.min[i]&&n<bounds.max[i])&&this.collision.loaded(p[0],p[2]);}
   destroy(hit:BlockHit){const changes=this.building.destroy(hit);return changes.length?this.change(changes):false;}
   place(item:string,hit:BlockHit,direction:Vec3,player:Vec3){const changes=this.building.place(item,hit,direction,player);return changes?this.change(changes):false;}
+  /** Remote-authority write: validated host edits land through the same setBlock path. */
+  applyRemote(changes:BlockChange[]){return changes.length?this.change(changes):false;}
   private markDirty(p:Vec3){for(let y=Math.max(this.data.bounds?.min[1]??0,p[1]-1)>>4;y<=(p[1]+1)>>4;y++)for(let z=(p[2]-1)>>4;z<=(p[2]+1)>>4;z++)for(let x=(p[0]-1)>>4;x<=(p[0]+1)>>4;x++)this.dirty.add(`${x},${y},${z}`);}
   private refreshSurface(p:Vec3){const column=this.loaded.get(`${p[0]>>4},${p[2]>>4}`);if(!column)return;const index=(p[2]&15)*16+(p[0]&15);column.surface[index]=this.data.bounds?.min[1]??0;column.rainSurface[index]=this.data.bounds?.min[1]??0;
     for(let y=this.data.bounds?.min[1]??0;y<(this.data.bounds?.max[1]??320);y++){const block=this.assets.manifest.blocks[this.voxels.get(p[0],y,p[2])];if(block?.solid||block?.fluid){column.surface[index]=Math.max(column.surface[index],y+(block.fluid?1:Math.max(0,...block.collision.map(box=>box.to[1]))));column.rainSurface[index]=y+1;}}

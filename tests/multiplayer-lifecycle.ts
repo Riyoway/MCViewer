@@ -130,9 +130,28 @@ import {languages, type Catalog} from '../src/ui/Language.ts';
     'broadcastEnv',
     'applyHostEnv',
     'syncMpEnter',
+    'syncMpProgress',
     'leaveMultiplayer',
     'quitMpSession',
     'onclose',
+    // End-to-end wiring: edits, framed transfer, host serve, peer close.
+    "kind==='edit'",
+    'applyRemoteEdit',
+    'broadcastEdit',
+    'encodeGateMessage',
+    'decodeGateMessage',
+    'serveWorld',
+    'correctGuestEdit',
+    'applyRemote',
+    'mpPeer',
+    'mpEdit',
+    'parseRoomCode',
+    "'Invalid room code'",
+    'room-error',
+    'transfer-progress',
+    'signal-connect',
+    'room-play',
+    'mpGate.roomWorld',
   ]) assert(main.includes(needle), `main.ts missing lifecycle wiring: ${needle}`);
   assert.match(main, /sky\.time\s*=\s*env\.time/, 'host time overwrites local sky');
   assert(main.includes('weather.setMode(env.weather)'), 'host weather overwrites local weather');
@@ -142,7 +161,7 @@ import {languages, type Catalog} from '../src/ui/Language.ts';
 {
   for(const [code] of languages) {
     const data: Catalog = JSON.parse(await readFile(`public/menu/locales/${code}.json`, 'utf8'));
-    for(const key of ['Host left the session', 'Connection to the host was lost']) {
+    for(const key of ['Host left the session', 'Connection to the host was lost', 'Invalid room code', 'Offer', 'Answer', 'Connect', 'Waiting for connection...', 'Receiving world...', 'World ready']) {
       assert(data.ui[key]?.trim(), `${code}: missing ${key}`);
     }
   }
@@ -152,7 +171,7 @@ import {languages, type Catalog} from '../src/ui/Language.ts';
 {
   const pkg = JSON.parse(await readFile('package.json', 'utf8'));
   const test: string = pkg.scripts.test;
-  for(const file of ['multiplayer-ui', 'multiplayer-signaling', 'multiplayer-presence', 'multiplayer-edits', 'multiplayer-gate', 'multiplayer-lifecycle']) {
+  for(const file of ['multiplayer-ui', 'multiplayer-signaling', 'multiplayer-presence', 'multiplayer-edits', 'multiplayer-gate', 'multiplayer-lifecycle', 'multiplayer-wire']) {
     assert(test.includes(`tsx tests/${file}.ts`), `npm test missing tests/${file}.ts`);
   }
 }

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {WorldGate, chunkData, isWorldGateMessage} from '../src/multiplayer/WorldGate.ts';
+import {WorldGate, chunkData, isWorldGateMessage, encodeGateMessage, decodeGateMessage} from '../src/multiplayer/WorldGate.ts';
 
 // Both sides know the same sample catalog; each side also knows its own saves.
 const samples = ['tutorial', 'demo'];
@@ -98,6 +98,44 @@ assert.equal(isWorldGateMessage(JSON.stringify({kind: 'world-chunk'})), false, '
 assert.equal(isWorldGateMessage({id: 'a', x: 1, y: 2, z: 3, yaw: 0, pitch: 0, seq: 1}), false, 'bare presence stays untouched');
 assert.equal(isWorldGateMessage({kind: 'edit', sender: 'h', seq: 1, changes: []}), false, 'edits route elsewhere');
 assert.equal(isWorldGateMessage(null), false);
+
+// --- string-only wire: base64 framing survives a JSON transport round-trip ---
+{
+  const host = new WorldGate({samples: [], savedIds: ['local:host-custom'], roomWorld: 'local:host-custom'});
+  const original = new Uint8Array([10, 20, 30, 40, 50, 60, 70, 80, 90]);
+  host.setSource(original, 4);
+  assert.equal(host.decision, 'local', 'host owns the world, no transfer for itself');
+  const guest = new WorldGate({samples: [], savedIds: [], roomWorld: 'local:host-custom'});
+  assert.equal(guest.decision, 'transfer');
+  const wire = [encodeGateMessage(host.metaMessage())];
+  for(let i = 0; i < host.chunkCount; i++) wire.push(encodeGateMessage(host.chunkMessage(i)));
+  assert(wire.every(text => typeof text === 'string'), 'every gate message travels as string-only JSON');
+  const meta = decodeGateMessage(wire[0]);
+  if(!meta || meta.kind !== 'world-meta') throw new Error('meta did not survive the wire');
+  guest.beginTransfer(meta.total, meta.chunks);
+  for(const text of wire.slice(1)) {
+    const msg = decodeGateMessage(text);
+    if(!msg || msg.kind !== 'world-chunk') throw new Error('chunk did not survive the wire');
+    assert(msg.data instanceof Uint8Array, 'base64 data decodes back to bytes');
+    guest.receiveChunk(msg.index, msg.data);
+  }
+  assert.equal(guest.canPlay, true, 'string-only wire still gates play until 100%');
+  assert.deepEqual(guest.takeBytes(), original, 'complete bytes hand off after base64 framing');
+  assert.equal(decodeGateMessage('not-json{{{'), null, 'garbage is not a gate message');
+  assert.equal(decodeGateMessage(JSON.stringify({kind: 'edit', sender: 'h', seq: 1, changes: []})), null, 'edits never route to the gate');
+  const passthrough = host.metaMessage();
+  assert.equal(decodeGateMessage(passthrough), passthrough, 'in-memory messages pass through untouched');
+}
+
+// --- zero-byte transfer is rejected loudly instead of deadlocking play ---
+{
+  const zero = new WorldGate({samples: [], savedIds: [], roomWorld: 'local:empty'});
+  assert.equal(zero.decision, 'transfer');
+  assert.throws(() => zero.beginTransfer(0, 0), /positive byte total/, 'total 0 throws instead of blocking forever');
+  assert.throws(() => zero.beginTransfer(0), /positive byte total/);
+  assert.equal(zero.canPlay, false, 'rejected gate never unblocks play');
+  assert.equal(zero.takeBytes(), undefined);
+}
 
 // --- chunkData: host-side split helper ---
 assert.deepEqual(chunkData(new Uint8Array([1, 2, 3]), 10), [new Uint8Array([1, 2, 3])], 'short input stays one chunk');
