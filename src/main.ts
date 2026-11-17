@@ -114,6 +114,9 @@ async function init() {
     error.hidden = false;
     setText(error, 'Invalid room code');
   };
+  // Room code stays a plain <p> in Minecraft style: the bitmap font paints
+  // text into canvas glyphs, so a <p> can never be selected. Tapping the
+  // code itself copies it instead.
   const showRoom = (code: string, worldId: string): void => {
     setLiteral($('room-code'), code);
     setLiteral($('room-world'), samples[worldId]?.name ?? records.get(worldId)?.name ?? worldId);
@@ -183,17 +186,40 @@ async function init() {
   // Long signal blobs are painful to select by hand: tapping a box selects
   // it all, and the Copy buttons push it to the clipboard (with a manual
   // select fallback where the async clipboard is unavailable).
+  const copyText = (text: string): void => {
+    if(!text) return;
+    const done = (): void => setText($('room-status'), 'Copied');
+    if(navigator.clipboard?.writeText) void navigator.clipboard.writeText(text).then(done, () => { fallbackCopy(text); done(); });
+    else { fallbackCopy(text); done(); }
+  };
+  // No selectable element in the Minecraft-style screens: copy through a
+  // temporary textarea that never enters the visible menu.
+  const fallbackCopy = (text: string): void => {
+    const temp = document.createElement('textarea');
+    temp.value = text;
+    temp.setAttribute('aria-hidden', 'true');
+    document.body.append(temp);
+    temp.focus();
+    temp.select();
+    try { document.execCommand('copy'); } catch { /* manual copy */ }
+    temp.remove();
+  };
   const copySignal = (id: string): void => {
     const box = $<HTMLTextAreaElement>(id);
     if(!box.value) return;
     box.focus();
     box.select();
-    const done = (): void => setText($('room-status'), 'Copied');
-    if(navigator.clipboard?.writeText) void navigator.clipboard.writeText(box.value).then(done, () => { box.select(); });
-    else { try { document.execCommand('copy'); } catch { /* manual copy */ } done(); }
+    copyText(box.value);
+  };
+  const copyRoomCode = (): void => {
+    const text = $('room-code').textContent?.trim() ?? '';
+    if(!text || /^-+$/.test(text)) return;
+    copyText(text);
   };
   $('copy-offer').onclick=()=>copySignal('signal-offer');
   $('copy-answer').onclick=()=>copySignal('signal-answer');
+  $('room-code').onclick=copyRoomCode;
+  $('room-code').addEventListener('keydown', event => { if(event.code === 'Space' || event.code === 'Enter') { event.preventDefault(); copyRoomCode(); } });
   for(const id of ['signal-offer', 'signal-answer']) $(id).addEventListener('focus', event => (event.target as HTMLTextAreaElement).select());
   $('home-multiplayer').onclick=openMultiplayer;
   $('multiplayer-back').onclick=()=>menu('home-menu');

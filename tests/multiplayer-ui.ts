@@ -16,6 +16,7 @@ for (const id of ['mp-world', 'create-room', 'join-room', 'room-code-input', 'ro
 assert(!markup.includes('id="create-room" disabled'), 'create-room must be enabled');
 assert(!markup.includes('id="join-room" disabled'), 'join-room must be enabled');
 assert(markup.indexOf('id="mp-world"') < markup.indexOf('id="room-code-input"'), 'world picker must precede room code');
+assert(markup.includes('<p id="room-code"'), 'room code must stay Minecraft-styled text (no native fields)');
 assert(/multiplayer-menu"[^]*<h1>Multiplayer<\/h1><div class="import-fields">/.test(markup), 'multiplayer fields must sit below the title (H1 overlay eats clicks)');
 const native = await readFile('src/ui/NativeOptions.ts', 'utf8');
 assert(native.includes('mp-world'), 'world picker must keep its native dropdown (cycling cannot list 14+ worlds)');
@@ -24,6 +25,7 @@ const main = await readFile('src/main.ts', 'utf8');
 assert(main.includes('openMultiplayer'), 'missing openMultiplayer接点');
 assert(main.includes("menu('multiplayer-menu')"), 'multiplayer-menu unreachable from menu()');
 assert(main.includes("mp-world"), 'create flow must read the multiplayer world picker');
+assert(main.includes("room-code').onclick"), 'tapping the room code must copy it');
 
 for (const [code] of languages) {
   const data: Catalog = JSON.parse(await readFile(`public/menu/locales/${code}.json`, 'utf8'));
