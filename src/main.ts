@@ -173,14 +173,23 @@ async function init() {
         setText($('room-status'), 'World ready');
       } else if(mpRole === 'guest' && !mpChannel) {
         const code = $('room-code').textContent?.trim() ?? '';
-        const room = await joinRoom(code, $<HTMLTextAreaElement>('signal-offer').value.trim());
+        const offer = $<HTMLTextAreaElement>('signal-offer').value.trim();
+        if(!offer) { setText($('room-status'), 'Paste the host offer first.'); return; }
+        const room = await joinRoom(code, offer);
         setLiteral($<HTMLTextAreaElement>('signal-answer'), room.answer);
         $<HTMLTextAreaElement>('signal-answer').select();
         attachMpChannel(room.channel, 'guest', room.peer);
         setText($('room-status'), 'Waiting for connection...');
       }
       syncMpEnter();
-    } catch(cause) { setLiteral($('room-status'), String(cause instanceof Error ? cause.message : cause)); }
+    } catch(cause) {
+      const message = String(cause instanceof Error ? cause.message : cause);
+      // The 15s data-channel timeout means the host is gone, the offer is
+      // stale, or the networks cannot reach each other: say what to do
+      // instead of dumping the technical reason.
+      if(/No data channel arrived/.test(message)) setText($('room-status'), 'Could not reach the host. Ask for a fresh code and keep the host screen open.');
+      else setLiteral($('room-status'), message);
+    }
   })().catch(report);
   $('room-play').onclick=()=>void openSelected();
   // Long signal blobs are painful to select by hand: tapping a box selects

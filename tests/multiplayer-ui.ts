@@ -31,7 +31,7 @@ assert(main.includes("room-code').onclick"), 'tapping the room code must copy it
 
 for (const [code] of languages) {
   const data: Catalog = JSON.parse(await readFile(`public/menu/locales/${code}.json`, 'utf8'));
-  for (const key of ['Multiplayer', 'Create', 'Join', 'Room code', 'Tap the code to copy it', 'Invalid room code', 'Offer', 'Answer', 'Copy Offer', 'Copy Answer', 'Copied', 'Connect', 'Waiting for connection...', 'Receiving world...', 'World ready']) {
+  for (const key of ['Multiplayer', 'Create', 'Join', 'Room code', 'Tap the code to copy it', 'Invalid room code', 'Paste the host offer first.', 'Could not reach the host. Ask for a fresh code and keep the host screen open.', 'Offer', 'Answer', 'Copy Offer', 'Copy Answer', 'Copied', 'Connect', 'Waiting for connection...', 'Receiving world...', 'World ready']) {
     assert(data.ui[key]?.trim(), `${code}: missing ${key}`);
   }
 }
