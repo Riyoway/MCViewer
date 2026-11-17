@@ -99,6 +99,18 @@ assert.equal(isWorldGateMessage({id: 'a', x: 1, y: 2, z: 3, yaw: 0, pitch: 0, se
 assert.equal(isWorldGateMessage({kind: 'edit', sender: 'h', seq: 1, changes: []}), false, 'edits route elsewhere');
 assert.equal(isWorldGateMessage(null), false);
 
+// --- world-announce: short room keys resolve to worlds only in-band ---
+{
+  const host = new WorldGate({samples: ['tutorial'], savedIds: [], roomWorld: 'tutorial'});
+  const hello = host.announceMessage('Tutorial World · TU14');
+  assert.equal(hello.kind, 'world-announce');
+  const wire = encodeGateMessage(hello);
+  assert.equal(typeof wire, 'string', 'announce travels as string-only JSON');
+  const back = decodeGateMessage(wire);
+  assert(back?.kind === 'world-announce' && back.worldId === 'tutorial' && back.name === 'Tutorial World · TU14', 'announce survives the wire with id and name');
+  assert.equal(isWorldGateMessage(hello), true, 'announce routes to the gate dispatcher');
+}
+
 // --- string-only wire: base64 framing survives a JSON transport round-trip ---
 {
   const host = new WorldGate({samples: [], savedIds: ['local:host-custom'], roomWorld: 'local:host-custom'});

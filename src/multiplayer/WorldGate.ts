@@ -7,12 +7,13 @@
 export type GateDecision = 'local' | 'transfer';
 
 export type WorldGateMessage =
+  | {kind: 'world-announce'; worldId: string; name?: string}
   | {kind: 'world-request'; worldId: string}
   | {kind: 'world-meta'; worldId: string; total: number; chunks: number; name?: string}
   | {kind: 'world-chunk'; worldId: string; index: number; total: number; data: Uint8Array}
   | {kind: 'world-complete'; worldId: string};
 
-const KINDS = new Set(['world-request', 'world-meta', 'world-chunk', 'world-complete']);
+const KINDS = new Set(['world-announce', 'world-request', 'world-meta', 'world-chunk', 'world-complete']);
 
 /** Kind guard for the future dispatcher: only world-* messages match. */
 export function isWorldGateMessage(value: unknown): value is WorldGateMessage {
@@ -181,6 +182,11 @@ export class WorldGate {
 
   requestMessage(): WorldGateMessage {
     return {kind: 'world-request', worldId: this.current};
+  }
+
+  /** Host hello on channel open: tells the guest which world this room hosts. */
+  announceMessage(name?: string): WorldGateMessage {
+    return {kind: 'world-announce', worldId: this.current, ...(name ? {name} : {})};
   }
 
   metaMessage(name?: string): WorldGateMessage {

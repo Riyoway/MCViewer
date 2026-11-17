@@ -17,6 +17,8 @@ assert(!markup.includes('id="create-room" disabled'), 'create-room must be enabl
 assert(!markup.includes('id="join-room" disabled'), 'join-room must be enabled');
 assert(markup.indexOf('id="mp-world"') < markup.indexOf('id="room-code-input"'), 'world picker must precede room code');
 assert(markup.includes('<p id="room-code"'), 'room code must stay Minecraft-styled text (no native fields)');
+assert(/room-menu"[^]*<h1>Room code<\/h1><div class="import-fields">/.test(markup), 'room fields must sit in the centered column below the title');
+assert(markup.includes('Tap the code to copy it'), 'room must hint that tapping the code copies it');
 assert(/multiplayer-menu"[^]*<h1>Multiplayer<\/h1><div class="import-fields">/.test(markup), 'multiplayer fields must sit below the title (H1 overlay eats clicks)');
 const native = await readFile('src/ui/NativeOptions.ts', 'utf8');
 assert(native.includes('mp-world'), 'world picker must keep its native dropdown (cycling cannot list 14+ worlds)');
@@ -29,7 +31,7 @@ assert(main.includes("room-code').onclick"), 'tapping the room code must copy it
 
 for (const [code] of languages) {
   const data: Catalog = JSON.parse(await readFile(`public/menu/locales/${code}.json`, 'utf8'));
-  for (const key of ['Multiplayer', 'Create', 'Join', 'Room code', 'Invalid room code', 'Offer', 'Answer', 'Copy Offer', 'Copy Answer', 'Copied', 'Connect', 'Waiting for connection...', 'Receiving world...', 'World ready']) {
+  for (const key of ['Multiplayer', 'Create', 'Join', 'Room code', 'Tap the code to copy it', 'Invalid room code', 'Offer', 'Answer', 'Copy Offer', 'Copy Answer', 'Copied', 'Connect', 'Waiting for connection...', 'Receiving world...', 'World ready']) {
     assert(data.ui[key]?.trim(), `${code}: missing ${key}`);
   }
 }

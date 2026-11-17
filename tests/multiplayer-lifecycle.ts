@@ -86,7 +86,7 @@ import {languages, type Catalog} from '../src/ui/Language.ts';
 
 // --- 4. Room guest leak: late throws close the peer like the host side ---
 {
-  const code = createRoomCode('local:test-world');
+  const code = createRoomCode();
   const offer = encodeSignal({type: 'offer', sdp: 'v=0'});
   const lateBoom: any = {
     closed: 0,
@@ -122,7 +122,7 @@ import {languages, type Catalog} from '../src/ui/Language.ts';
     close() { this.closed++; },
   };
   const room = await joinRoom(code, offer, ok);
-  assert.equal(room.worldId, 'local:test-world');
+  assert.equal(room.key, code, 'guest echoes the short room key');
   assert.equal(ok.closed, 0, 'success path never closes');
 }
 
@@ -156,6 +156,8 @@ import {languages, type Catalog} from '../src/ui/Language.ts';
     'mpEdit',
     'parseRoomCode',
     "'Invalid room code'",
+    'world-announce',
+    'announceMessage',
     'room-error',
     'transfer-progress',
     'signal-connect',

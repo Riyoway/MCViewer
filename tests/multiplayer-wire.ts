@@ -81,7 +81,7 @@ import {languages, type Catalog} from '../src/ui/Language.ts';
 // message the room UI shows for them.
 {
   const {parseRoomCode} = await import('../src/multiplayer/Room.ts');
-  for(const bad of ['', 'no-separator', '#abc123', 'a b#cdef12']) {
+  for(const bad of ['', 'no spaces here', 'x#ab']) {
     assert.throws(() => parseRoomCode(bad), /Invalid room code/);
   }
   for(const [code] of languages) {

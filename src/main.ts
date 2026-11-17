@@ -24,7 +24,7 @@ import { Player,lockPointer } from './core/Player';
 import { PlayerModel } from './core/PlayerModel';
 import { Presence, type EnvMessage } from './multiplayer/Presence';
 import { WorldGate, encodeGateMessage, decodeGateMessage, type WorldGateMessage } from './multiplayer/WorldGate';
-import { createRoom, joinRoom, parseRoomCode, createHostNonce } from './multiplayer/Room.ts';
+import { createRoom, joinRoom, parseRoomCode } from './multiplayer/Room.ts';
 import { EditSync, type EditMessage } from './multiplayer/EditSync.ts';
 import type { BlockChange } from './minecraft/Building';
 import { HEIGHT, RADIUS } from './core/Collision';
@@ -117,27 +117,27 @@ async function init() {
   // Room code stays a plain <p> in Minecraft style: the bitmap font paints
   // text into canvas glyphs, so a <p> can never be selected. Tapping the
   // code itself copies it instead.
-  const showRoom = (code: string, worldId: string): void => {
+  // Room codes are short typed keys only: the hosted world is announced
+  // in-band after the channel opens, so no world id ever enters the code.
+  const showRoom = (code: string, worldName: string): void => {
     setLiteral($('room-code'), code);
-    setLiteral($('room-world'), samples[worldId]?.name ?? records.get(worldId)?.name ?? worldId);
+    setLiteral($('room-world'), worldName);
     setText($('room-status'), 'Waiting for connection...');
     $<HTMLProgressElement>('transfer-progress').hidden = true;
     menu('room-menu');
+  };
+  const showRoomWorld = (worldId: string, name?: string): void => {
+    const label = name ?? samples[worldId]?.name ?? records.get(worldId)?.name ?? worldId;
+    setLiteral($('room-world'), label);
+    if(name) mpWorldName = name;
   };
   $('create-room').onclick=()=>void (async()=>{
     const picked = $<HTMLSelectElement>('mp-world').value || selected || 'tutorial';
     const worldId = samples[picked] || records.get(picked) ? picked : 'tutorial';
     $('room-error').hidden=true;
     try {
-      // Custom ids ("local:<uuid>") never enter the code: the host mints a
-      // short alias and resolves it when the guest's world-request arrives.
-      let codeWorld = worldId;
-      if(!samples[worldId] && records.get(worldId)) {
-        codeWorld = `c${createHostNonce()}`;
-        mpAlias.set(codeWorld, {recordId: worldId, name: records.get(worldId)!.name});
-      }
-      const room = await createRoom(codeWorld);
-      mpNonce = room.code.split('#')[1] ?? '';
+      const room = await createRoom();
+      mpNonce = room.code;
       mpAcceptAnswer = room.acceptAnswer;
       selected = worldId;
       mpRole = 'host';
@@ -146,22 +146,22 @@ async function init() {
       mpGate = new WorldGate({samples: Object.keys(samples), savedIds: records.keys(), roomWorld: worldId});
       syncMpEnter();
       attachMpChannel(room.channel, 'host', room.peer);
-      showRoom(room.code, worldId);
+      showRoom(room.code, samples[worldId]?.name ?? records.get(worldId)?.name ?? worldId);
     } catch(cause) { report(cause); }
   })().catch(report);
   $('join-room').onclick=()=>{
     const raw = $<HTMLInputElement>('room-code-input').value.trim();
     $('room-error').hidden=true;
-    let worldId: string;
-    try { worldId = parseRoomCode(raw).worldId; }
+    let key: string;
+    try { key = parseRoomCode(raw).key; }
     catch { showRoomError(); return; }
-    mpNonce = raw.split('#')[1] ?? '';
+    mpNonce = key;
     mpRole = 'guest';
+    mpWorldName = '';
     setLiteral($<HTMLTextAreaElement>('signal-offer'), '');
     setLiteral($<HTMLTextAreaElement>('signal-answer'), '');
-    gateJoinWorld(worldId);
     syncMpProgress();
-    showRoom(raw, worldId);
+    showRoom(raw, raw);
   };
   // Host pastes the guest answer; guest pastes the host offer and receives
   // the answer to copy back. Either side lands in attachMpChannel.
@@ -228,9 +228,7 @@ async function init() {
   // Local matches reload via choose() with zero transfer; custom worlds
   // buffer kind-tagged chunks in the gate and reach play() only at 100%.
   let mpGate: WorldGate | null = null, mpRole: 'host' | 'guest' = 'guest', mpActive = false;
-  // Custom worlds travel under a short host-minted alias (e.g. "cX7k2md")
-  // so room codes stay short; the host resolves alias -> saved record id.
-  const mpAlias = new Map<string, {recordId: string; name: string}>();
+  // Announced world name for the guest's save record and room label.
   let mpWorldName = '';
   let mpPeer: RTCPeerConnection | null = null, mpEdit: EditSync | null = null, mpNonce = '';
   let mpAcceptAnswer: ((answer: string) => Promise<RTCDataChannel>) | null = null;
@@ -254,10 +252,10 @@ async function init() {
     bar.value = Math.round(mpGate.progress() * 100);
     setText($('room-status'), mpGate.canPlay ? 'World ready' : 'Receiving world...');
   };
-  const gateJoinWorld = (roomWorldId: string): 'local' | 'transfer' => {
+  const gateJoinWorld = (roomWorldId: string): WorldGate => {
     mpGate = new WorldGate({samples: Object.keys(samples), savedIds: records.keys(), roomWorld: roomWorldId});
     syncMpEnter();
-    return mpGate.decision;
+    return mpGate;
   };
   // Task 6: shared teardown for every world exit during a session
   // (change-map, cancel-loading, disconnect): no stale remotes, open
@@ -273,7 +271,6 @@ async function init() {
     mpNonce = '';
     mpRole = 'guest';
     mpWorldName = '';
-    mpAlias.clear();
     presence?.clear();
     if(mpGate){mpGate.cancel();mpGate = null;}
   };
@@ -289,12 +286,24 @@ async function init() {
     menu('map-menu');
     void refreshList();
   };
-  // Guest path: world-meta/world-chunk feed the gate; each chunk re-syncs
-  // enter and progress, so play stays blocked until 100%. A zero-byte
-  // meta can never complete, so it drops the session loudly instead.
+  // World handshake: the host announces its world on channel open; the
+  // guest gates on the announcement (local match or 100% transfer before
+  // play). A zero-byte meta can never complete, so it drops the session
+  // loudly instead.
   const handleMpWorld = (message: WorldGateMessage): void => {
-    if(!mpGate) return;
     if(mpRole === 'host') { void serveWorld(message); return; }
+    if(!mpGate) {
+      if(message.kind !== 'world-announce' || mpRole !== 'guest') return;
+      showRoomWorld(message.worldId, message.name);
+      const gate = gateJoinWorld(message.worldId);
+      if(gate.decision === 'transfer' && mpChannel?.readyState === 'open') {
+        try { mpChannel.send(encodeGateMessage(gate.requestMessage())); } catch { /* request retries on reopen */ }
+        setText($('room-status'), 'Receiving world...');
+      }
+      syncMpEnter();
+      syncMpProgress();
+      return;
+    }
     try {
       if(message.kind === 'world-meta') {
         mpGate.beginTransfer(message.total, message.chunks);
@@ -316,10 +325,7 @@ async function init() {
     if(message.kind !== 'world-request') return;
     try {
       if(samples[message.worldId] || samples[message.worldId.replace(/^sample:/, '')]) return;
-      // Short custom aliases resolve through the host's in-memory map, so
-      // full "local:<uuid>" ids never travel in room codes. Full ids still
-      // work for codes minted before aliases existed.
-      const record = records.get(mpAlias.get(message.worldId)?.recordId ?? message.worldId);
+      const record = records.get(message.worldId);
       if(!record?.files?.length) return;
       const parts = await Promise.all(record.files.map(async file => new Uint8Array(await file.blob.arrayBuffer())));
       const bytes = parts.length === 1 ? parts[0] : zipSync(Object.fromEntries(record.files.map((file, i) => [file.name, parts[i]])));
@@ -355,7 +361,7 @@ async function init() {
     if(corrections.length) mpEdit.broadcastEdit(corrections);
   };
   // Route an open Task 2 DataChannel into Presence, WorldGate and EditSync.
-  const attachMpChannel=(channel:RTCDataChannel|null,role:'host'|'guest'='guest',peer:RTCPeerConnection|null=null)=>{mpChannel=channel;mpRole=role;mpPeer=peer;mpActive=!!channel;if(channel){channel.onopen=()=>{if(mpChannel!==channel)return;if(mpRole==='guest'&&mpGate&&mpGate.decision==='transfer'){try{channel.send(encodeGateMessage(mpGate.requestMessage()));}catch{/* request retries on the next open */}setText($('room-status'),'Receiving world...');}else setText($('room-status'),'World ready');syncMpEnter();};channel.onclose=()=>{if(mpChannel!==channel)return;leaveMultiplayer(entered&&worldReady?'Host left the session':'Connection to the host was lost');};channel.onerror=()=>{if(mpChannel!==channel)return;leaveMultiplayer('Connection to the host was lost');};const prev=channel.onmessage;channel.onmessage=event=>{if(prev)try{prev.call(channel,event);}catch{/* keep prior handler failures local */}let data:unknown;try{data=JSON.parse(String(event.data));}catch{/* malformed payload is dropped */return;}if(data&&typeof data==='object'){const gate=decodeGateMessage(data);if(gate){handleMpWorld(gate);return;}const kind=(data as {kind?:unknown}).kind;if(kind==='env'){const env=presence?.applyHostEnv(data as EnvMessage);if(env){sky.time=env.time;if(weather.mode!==env.weather)weather.setMode(env.weather);}return;}if(kind==='edit'){if(!mpEdit?.applyRemoteEdit(data as EditMessage))correctGuestEdit(data);return;}}try{presence?.applyRemote(data as {id:string;x:number;y:number;z:number;yaw:number;pitch:number;seq:number});}catch{/* malformed presence is dropped */}};}};
+  const attachMpChannel=(channel:RTCDataChannel|null,role:'host'|'guest'='guest',peer:RTCPeerConnection|null=null)=>{mpChannel=channel;mpRole=role;mpPeer=peer;mpActive=!!channel;if(channel){channel.onopen=()=>{if(mpChannel!==channel)return;if(mpRole==='host'&&mpGate){const wid=mpGate.roomWorld;try{channel.send(encodeGateMessage(mpGate.announceMessage(samples[wid]?.name ?? records.get(wid)?.name)));}catch{/* announce retries on reopen */}setText($('room-status'),'World ready');}else setText($('room-status'),'Waiting for connection...');syncMpEnter();};channel.onclose=()=>{if(mpChannel!==channel)return;leaveMultiplayer(entered&&worldReady?'Host left the session':'Connection to the host was lost');};channel.onerror=()=>{if(mpChannel!==channel)return;leaveMultiplayer('Connection to the host was lost');};const prev=channel.onmessage;channel.onmessage=event=>{if(prev)try{prev.call(channel,event);}catch{/* keep prior handler failures local */}let data:unknown;try{data=JSON.parse(String(event.data));}catch{/* malformed payload is dropped */return;}if(data&&typeof data==='object'){const gate=decodeGateMessage(data);if(gate){handleMpWorld(gate);return;}const kind=(data as {kind?:unknown}).kind;if(kind==='env'){const env=presence?.applyHostEnv(data as EnvMessage);if(env){sky.time=env.time;if(weather.mode!==env.weather)weather.setMode(env.weather);}return;}if(kind==='edit'){if(!mpEdit?.applyRemoteEdit(data as EditMessage))correctGuestEdit(data);return;}}try{presence?.applyRemote(data as {id:string;x:number;y:number;z:number;yaw:number;pitch:number;seq:number});}catch{/* malformed presence is dropped */}};}};
   $('home-worlds').onclick=()=>{entered=false;menu('map-menu');void refreshList('local');};$('home-samples').onclick=()=>{entered=false;menu('map-menu');void refreshList('samples');};
   $('switch-worlds').onclick=()=>void refreshList(listMode==='samples'?'local':'samples');$('worlds-back').onclick=()=>menu('home-menu');
   $('add-world').onclick=()=>{menu('add-menu');$<HTMLInputElement>('world-name').focus();};$('cancel-import').onclick=()=>menu('map-menu');
@@ -462,21 +468,18 @@ async function init() {
     }catch(cause){source?.dispose();if(pendingImport===source)pendingImport=undefined;if(token===request){document.exitPointerLock?.();report(cause);menu('map-menu');void refreshList();}}
   }
   function captureLoading(){if(touch?.enabled||touchDevice())return;const token=request+1;void lockPointer(canvas).then(()=>{if(token!==request)document.exitPointerLock?.();}).catch(()=>{/* The canvas click can retry if this browser requires another gesture. */});}
-  // Transfer bytes land on the room world, never on the highlighted entry:
-  // the gate id is the join contract, `selected` is just list state.
+  // Transfer bytes land under a fresh local id with the host-announced
+  // name, never on the highlighted entry: the gate id is the join
+  // contract, `selected` is just list state. The room code carries no
+  // world id, so there is nothing else to map back onto.
   async function openSelected(){
     if(mpGate?.roomWorld){
       const wid = mpGate.roomWorld, id = wid.startsWith('sample:') ? wid.slice(7) : wid;
       if(mpGate.decision==='transfer'){
         const bytes=mpGate.takeBytes();
         if(!bytes){syncMpEnter();return;}
-        // Host-minted aliases ("cXXXXXX") carry no usable id: store the
-        // received world under a fresh local id with the host-sent name.
-        // Full "local:<uuid>" codes (pre-alias) keep the old mapping.
-        const alias = !wid.includes(':');
-        const nid = alias ? `local:${crypto.randomUUID()}` : id;
-        const name = alias ? (mpWorldName || wid) : wid;
-        records.set(nid,{id:nid,name,added:Date.now(),files:[{name:`${nid.split(':').pop()??nid}.zip`,blob:new Blob([bytes.buffer as ArrayBuffer])}]});
+        const nid = `local:${crypto.randomUUID()}`;
+        records.set(nid,{id:nid,name:mpWorldName||wid,added:Date.now(),files:[{name:`${nid.split(':').pop()??nid}.zip`,blob:new Blob([bytes.buffer as ArrayBuffer])}]});
         selected=nid;
       } else selected=id;
     }

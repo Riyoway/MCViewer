@@ -245,6 +245,7 @@ export const translations:Record<string,[string,string,string,string]>={
   "Connect":["接続","连接","連線","연결"],
   "Copy Offer":["オファーをコピー","复制提议","複製提議","제안 복사"],
   "Copy Answer":["アンサーをコピー","复制应答","複製回應","응답 복사"],
+  "Tap the code to copy it":["コードはタップでコピー","点击代码即可复制","點選代碼即可複製","코드를 탭하여 복사"],
   "Copied":["コピーしました","已复制","已複製","복사됨"],
   "Waiting for connection...":["接続を待っています...","正在等待连接...","正在等待連線...","연결을 기다리는 중..."],
   "Receiving world...":["ワールドを受信中...","正在接收世界...","正在接收世界...","세계 받는 중..."],

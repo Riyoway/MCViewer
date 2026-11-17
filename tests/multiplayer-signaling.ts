@@ -11,28 +11,24 @@ assert.deepEqual(decodeSignal<typeof offer>(encodedOffer),offer);
 assert.deepEqual(decodeSignal<typeof answer>(encodeSignal(answer)),answer);
 assert.equal(decodeSignal<string>(encodeSignal('hello')), 'hello');
 
-// Room code round-trip: worldId + hostNonce short form.
+// Room code round-trip: a short human-typed key only (no world id inside).
 const nonce=createHostNonce();
 assert.match(nonce,/^[0-9a-z]{6}$/,'host nonce is a 6-char short form');
-const code=createRoomCode('local:test-world');
-assert.match(code,/^local:test-world#[0-9a-z]{6}$/);
-assert.deepEqual(parseRoomCode(code),{worldId:'local:test-world',hostNonce:code.split('#')[1]});
-assert.equal(parseRoomCode(createRoomCode('sample:demo',nonce)).hostNonce,nonce);
-
-// Short custom alias codes: the host mints "c"+nonce so "local:<uuid>"
-// never travels in the code; guests echo it and the host resolves it.
-const aliasCode = createRoomCode(`c${createHostNonce()}`);
-assert(aliasCode.length < 20, `alias code must stay short, got ${aliasCode.length} chars`);
-assert.deepEqual(parseRoomCode(aliasCode), {worldId: aliasCode.split('#')[0], hostNonce: aliasCode.split('#')[1]});
+const code=createRoomCode();
+assert.match(code,/^[0-9a-z]{6}$/,`room code must stay short and typable, got ${code}`);
+assert(code.length < 20, 'room code must stay short');
+assert.deepEqual(parseRoomCode(code),{key:code});
+assert.equal(parseRoomCode(createRoomCode(nonce)).key,nonce);
+assert.equal(parseRoomCode(`  ${code}  `).key,code,'surrounding whitespace is trimmed');
 
 // Invalid codes fail with a clear error before any RTC/WebSocket is touched.
-for(const bad of ['','no-separator','#abc123','world#','a b#cdef12','w#!!!','x#ab']) {
+for(const bad of ['','a b','x#ab','toolongtoolongtoolong','ab!','#abc123']) {
   assert.throws(()=>parseRoomCode(bad),/Invalid room code/,JSON.stringify(bad));
 }
 assert.throws(()=>decodeSignal('!!!not-base64!!!'),/Invalid signal/);
 assert.throws(()=>decodeSignal(''),/Invalid signal/);
-await assert.rejects(joinRoom('bad-code',encodeSignal(answer)),/Invalid room code/);
-await assert.rejects(createRoom(''),/Invalid/);
+await assert.rejects(joinRoom('bad code',encodeSignal(answer)),/Invalid room code/);
+await assert.rejects(createRoom({key:''}),/Invalid room code/);
 
 // gatherComplete: single-shot SDP must wait for ICE (no trickle). Fake peer.
 const fakePeer = () => {
@@ -64,7 +60,7 @@ const fakePeer = () => {
   await assert.rejects(gatherComplete(stuck as unknown as RTCPeerConnection, 50), /Timed out gathering/);
 }
 assert.equal(typeof (globalThis as {RTCPeerConnection?: unknown}).RTCPeerConnection,'undefined');
-await assert.rejects(createRoom('local:test-world'),/RTCPeerConnection is unavailable/);
+await assert.rejects(createRoom(),/RTCPeerConnection is unavailable/);
 
 // WebSocket auto-exchange is opt-in via VITE_MULTIPLAYER_SIGNAL_URL only.
 const saved=process.env.VITE_MULTIPLAYER_SIGNAL_URL;
