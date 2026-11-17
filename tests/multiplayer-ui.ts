@@ -10,7 +10,7 @@ assert(markup.indexOf('id="home-multiplayer"') > markup.indexOf('id="home-sample
 
 // Room flow is wired, not stubbed: create/join enabled, code input +
 // invalid-code slot, signal copy-paste, progress/cancel, room play.
-for (const id of ['mp-world', 'create-room', 'join-room', 'room-code-input', 'room-error', 'room-code', 'room-world', 'signal-offer', 'signal-answer', 'signal-connect', 'room-play', 'room-status', 'transfer-progress', 'room-back']) {
+for (const id of ['mp-world', 'create-room', 'join-room', 'room-code-input', 'room-error', 'room-code', 'room-world', 'signal-offer', 'signal-answer', 'copy-offer', 'copy-answer', 'signal-connect', 'room-play', 'room-status', 'transfer-progress', 'room-back']) {
   assert(markup.includes(`id="${id}"`), `missing room UI: ${id}`);
 }
 assert(!markup.includes('id="create-room" disabled'), 'create-room must be enabled');
@@ -27,7 +27,7 @@ assert(main.includes("mp-world"), 'create flow must read the multiplayer world p
 
 for (const [code] of languages) {
   const data: Catalog = JSON.parse(await readFile(`public/menu/locales/${code}.json`, 'utf8'));
-  for (const key of ['Multiplayer', 'Create', 'Join', 'Room code', 'Invalid room code', 'Offer', 'Answer', 'Connect', 'Waiting for connection...', 'Receiving world...', 'World ready']) {
+  for (const key of ['Multiplayer', 'Create', 'Join', 'Room code', 'Invalid room code', 'Offer', 'Answer', 'Copy Offer', 'Copy Answer', 'Copied', 'Connect', 'Waiting for connection...', 'Receiving world...', 'World ready']) {
     assert(data.ui[key]?.trim(), `${code}: missing ${key}`);
   }
 }

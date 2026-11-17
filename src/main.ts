@@ -180,6 +180,21 @@ async function init() {
     } catch(cause) { setLiteral($('room-status'), String(cause instanceof Error ? cause.message : cause)); }
   })().catch(report);
   $('room-play').onclick=()=>void openSelected();
+  // Long signal blobs are painful to select by hand: tapping a box selects
+  // it all, and the Copy buttons push it to the clipboard (with a manual
+  // select fallback where the async clipboard is unavailable).
+  const copySignal = (id: string): void => {
+    const box = $<HTMLTextAreaElement>(id);
+    if(!box.value) return;
+    box.focus();
+    box.select();
+    const done = (): void => setText($('room-status'), 'Copied');
+    if(navigator.clipboard?.writeText) void navigator.clipboard.writeText(box.value).then(done, () => { box.select(); });
+    else { try { document.execCommand('copy'); } catch { /* manual copy */ } done(); }
+  };
+  $('copy-offer').onclick=()=>copySignal('signal-offer');
+  $('copy-answer').onclick=()=>copySignal('signal-answer');
+  for(const id of ['signal-offer', 'signal-answer']) $(id).addEventListener('focus', event => (event.target as HTMLTextAreaElement).select());
   $('home-multiplayer').onclick=openMultiplayer;
   $('multiplayer-back').onclick=()=>menu('home-menu');
   $('room-back').onclick=()=>{quitMpSession();enter.disabled=!selected;menu('multiplayer-menu');};
