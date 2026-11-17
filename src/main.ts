@@ -147,6 +147,7 @@ async function init() {
       syncMpEnter();
       attachMpChannel(room.channel, 'host', room.peer);
       showRoom(room.code, samples[worldId]?.name ?? records.get(worldId)?.name ?? worldId);
+      setText($('room-steps'), 'Send the code and Offer, then paste their Answer and Connect.');
     } catch(cause) { report(cause); }
   })().catch(report);
   $('join-room').onclick=()=>{
@@ -162,6 +163,7 @@ async function init() {
     setLiteral($<HTMLTextAreaElement>('signal-answer'), '');
     syncMpProgress();
     showRoom(raw, raw);
+    setText($('room-steps'), 'Paste the host Offer, Connect, then send back your Answer.');
   };
   // Host pastes the guest answer; guest pastes the host offer and receives
   // the answer to copy back. Either side lands in attachMpChannel.
@@ -180,6 +182,7 @@ async function init() {
         $<HTMLTextAreaElement>('signal-answer').select();
         attachMpChannel(room.channel, 'guest', room.peer);
         setText($('room-status'), 'Waiting for connection...');
+        setText($('room-steps'), 'Send your Answer back and wait for World ready.');
       }
       syncMpEnter();
     } catch(cause) {
@@ -370,7 +373,7 @@ async function init() {
     if(corrections.length) mpEdit.broadcastEdit(corrections);
   };
   // Route an open Task 2 DataChannel into Presence, WorldGate and EditSync.
-  const attachMpChannel=(channel:RTCDataChannel|null,role:'host'|'guest'='guest',peer:RTCPeerConnection|null=null)=>{mpChannel=channel;mpRole=role;mpPeer=peer;mpActive=!!channel;if(channel){channel.onopen=()=>{if(mpChannel!==channel)return;if(mpRole==='host'&&mpGate){const wid=mpGate.roomWorld;try{channel.send(encodeGateMessage(mpGate.announceMessage(samples[wid]?.name ?? records.get(wid)?.name)));}catch{/* announce retries on reopen */}setText($('room-status'),'World ready');}else setText($('room-status'),'Waiting for connection...');syncMpEnter();};channel.onclose=()=>{if(mpChannel!==channel)return;leaveMultiplayer(entered&&worldReady?'Host left the session':'Connection to the host was lost');};channel.onerror=()=>{if(mpChannel!==channel)return;leaveMultiplayer('Connection to the host was lost');};const prev=channel.onmessage;channel.onmessage=event=>{if(prev)try{prev.call(channel,event);}catch{/* keep prior handler failures local */}let data:unknown;try{data=JSON.parse(String(event.data));}catch{/* malformed payload is dropped */return;}if(data&&typeof data==='object'){const gate=decodeGateMessage(data);if(gate){handleMpWorld(gate);return;}const kind=(data as {kind?:unknown}).kind;if(kind==='env'){const env=presence?.applyHostEnv(data as EnvMessage);if(env){sky.time=env.time;if(weather.mode!==env.weather)weather.setMode(env.weather);}return;}if(kind==='edit'){if(!mpEdit?.applyRemoteEdit(data as EditMessage))correctGuestEdit(data);return;}}try{presence?.applyRemote(data as {id:string;x:number;y:number;z:number;yaw:number;pitch:number;seq:number});}catch{/* malformed presence is dropped */}};}};
+  const attachMpChannel=(channel:RTCDataChannel|null,role:'host'|'guest'='guest',peer:RTCPeerConnection|null=null)=>{mpChannel=channel;mpRole=role;mpPeer=peer;mpActive=!!channel;if(channel){channel.onopen=()=>{if(mpChannel!==channel)return;setLiteral($('room-steps'),'');if(mpRole==='host'&&mpGate){const wid=mpGate.roomWorld;try{channel.send(encodeGateMessage(mpGate.announceMessage(samples[wid]?.name ?? records.get(wid)?.name)));}catch{/* announce retries on reopen */}setText($('room-status'),'World ready');}else setText($('room-status'),'Waiting for connection...');syncMpEnter();};channel.onclose=()=>{if(mpChannel!==channel)return;leaveMultiplayer(entered&&worldReady?'Host left the session':'Connection to the host was lost');};channel.onerror=()=>{if(mpChannel!==channel)return;leaveMultiplayer('Connection to the host was lost');};const prev=channel.onmessage;channel.onmessage=event=>{if(prev)try{prev.call(channel,event);}catch{/* keep prior handler failures local */}let data:unknown;try{data=JSON.parse(String(event.data));}catch{/* malformed payload is dropped */return;}if(data&&typeof data==='object'){const gate=decodeGateMessage(data);if(gate){handleMpWorld(gate);return;}const kind=(data as {kind?:unknown}).kind;if(kind==='env'){const env=presence?.applyHostEnv(data as EnvMessage);if(env){sky.time=env.time;if(weather.mode!==env.weather)weather.setMode(env.weather);}return;}if(kind==='edit'){if(!mpEdit?.applyRemoteEdit(data as EditMessage))correctGuestEdit(data);return;}}try{presence?.applyRemote(data as {id:string;x:number;y:number;z:number;yaw:number;pitch:number;seq:number});}catch{/* malformed presence is dropped */}};}};
   $('home-worlds').onclick=()=>{entered=false;menu('map-menu');void refreshList('local');};$('home-samples').onclick=()=>{entered=false;menu('map-menu');void refreshList('samples');};
   $('switch-worlds').onclick=()=>void refreshList(listMode==='samples'?'local':'samples');$('worlds-back').onclick=()=>menu('home-menu');
   $('add-world').onclick=()=>{menu('add-menu');$<HTMLInputElement>('world-name').focus();};$('cancel-import').onclick=()=>menu('map-menu');

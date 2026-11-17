@@ -10,7 +10,7 @@ assert(markup.indexOf('id="home-multiplayer"') > markup.indexOf('id="home-sample
 
 // Room flow is wired, not stubbed: create/join enabled, code input +
 // invalid-code slot, signal copy-paste, progress/cancel, room play.
-for (const id of ['mp-world', 'create-room', 'join-room', 'room-code-input', 'room-error', 'room-code', 'room-world', 'signal-offer', 'signal-answer', 'copy-offer', 'copy-answer', 'signal-connect', 'room-play', 'room-status', 'transfer-progress', 'room-back']) {
+for (const id of ['mp-world', 'create-room', 'join-room', 'room-code-input', 'room-error', 'room-code', 'room-steps', 'room-world', 'signal-offer', 'signal-answer', 'copy-offer', 'copy-answer', 'signal-connect', 'room-play', 'room-status', 'transfer-progress', 'room-back']) {
   assert(markup.includes(`id="${id}"`), `missing room UI: ${id}`);
 }
 assert(!markup.includes('id="create-room" disabled'), 'create-room must be enabled');
@@ -31,7 +31,7 @@ assert(main.includes("room-code').onclick"), 'tapping the room code must copy it
 
 for (const [code] of languages) {
   const data: Catalog = JSON.parse(await readFile(`public/menu/locales/${code}.json`, 'utf8'));
-  for (const key of ['Multiplayer', 'Create', 'Join', 'Room code', 'Tap the code to copy it', 'Invalid room code', 'Paste the host offer first.', 'Could not reach the host. Ask for a fresh code and keep the host screen open.', 'Offer', 'Answer', 'Copy Offer', 'Copy Answer', 'Copied', 'Connect', 'Waiting for connection...', 'Receiving world...', 'World ready']) {
+  for (const key of ['Multiplayer', 'Create', 'Join', 'Room code', 'Tap the code to copy it', 'Send the code and Offer, then paste their Answer and Connect.', 'Paste the host Offer, Connect, then send back your Answer.', 'Send your Answer back and wait for World ready.', 'Invalid room code', 'Paste the host offer first.', 'Could not reach the host. Ask for a fresh code and keep the host screen open.', 'Offer', 'Answer', 'Copy Offer', 'Copy Answer', 'Copied', 'Connect', 'Waiting for connection...', 'Receiving world...', 'World ready']) {
     assert(data.ui[key]?.trim(), `${code}: missing ${key}`);
   }
 }
