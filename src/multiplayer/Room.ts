@@ -35,12 +35,35 @@ export function parseRoomCode(code: string): RoomInfo {
   return {key};
 }
 
+/** Shown when the guest cannot open a channel: host gone, stale blob, or blocked network. */
+export const HOST_UNREACHABLE = 'Could not reach the host. Ask for a fresh code and keep the host screen open.';
+
+/**
+ * Optional relay for networks where peers cannot reach each other directly.
+ * Self-host a TURN server and set VITE_TURN_URL (plus VITE_TURN_USERNAME /
+ * VITE_TURN_CREDENTIAL when required); no secrets are bundled.
+ */
+export function iceServersFrom(env: Record<string, string | undefined>): RTCIceServer[] | undefined {
+  const urls = env.VITE_TURN_URL;
+  if(!urls) return undefined;
+  const server: RTCIceServer & {username?: string; credential?: string} = {urls};
+  if(env.VITE_TURN_USERNAME !== undefined) server.username = env.VITE_TURN_USERNAME;
+  if(env.VITE_TURN_CREDENTIAL !== undefined) server.credential = env.VITE_TURN_CREDENTIAL;
+  return [server];
+}
+
+function defaultIceServers(): RTCIceServer[] | undefined {
+  const env = (import.meta as unknown as {env?: Record<string, string | undefined>}).env;
+  return env ? iceServersFrom(env) : undefined;
+}
+
 function resolvePeer(input?: RTCPeerConnection | (() => RTCPeerConnection)): RTCPeerConnection {
   if(typeof input === 'function') return input();
   if(input) return input;
-  const Factory = (globalThis as {RTCPeerConnection?: new () => RTCPeerConnection}).RTCPeerConnection;
+  const Factory = (globalThis as {RTCPeerConnection?: new (...args: unknown[]) => RTCPeerConnection}).RTCPeerConnection;
   if(!Factory) throw new Error('RTCPeerConnection is unavailable in this environment (browser-only).');
-  return new Factory();
+  const servers = defaultIceServers();
+  return new Factory(servers ? {iceServers: servers} : undefined);
 }
 
 /**
@@ -93,7 +116,9 @@ export async function createRoom(opts?: {key?: string; peer?: RTCPeerConnection 
       channel,
       peer,
       acceptAnswer: async (answer: string) => {
-        await peer.setRemoteDescription(decodeSignal<RTCSessionDescriptionInit>(answer));
+        const remoteAnswer = decodeSignal<RTCSessionDescriptionInit>(answer);
+        if(!remoteAnswer || remoteAnswer.type !== 'answer' || typeof remoteAnswer.sdp !== 'string') throw wrongBlob('guest');
+        await peer.setRemoteDescription(remoteAnswer);
         return channel;
       },
     };
@@ -111,6 +136,13 @@ export interface GuestRoom {
   peer: RTCPeerConnection;
 }
 
+/** The pasted text decoded but is not the peer's handshake blob. */
+function wrongBlob(side: 'host' | 'guest'): Error {
+  return new Error(side === 'host'
+    ? 'That is not the host Offer. Copy the full text from the host screen.'
+    : 'That is not the guest Answer. Copy the full text from the guest screen.');
+}
+
 /**
  * Guest side: join by room key with the host's base64 offer, producing
  * the base64 answer. The key is validated before any RTC work runs.
@@ -118,18 +150,27 @@ export interface GuestRoom {
 export async function joinRoom(code: string, offer: string, peer?: RTCPeerConnection | (() => RTCPeerConnection)): Promise<GuestRoom> {
   const {key} = parseRoomCode(code);
   const remote = decodeSignal<RTCSessionDescriptionInit>(offer);
+  if(!remote || remote.type !== 'offer' || typeof remote.sdp !== 'string') throw wrongBlob('host');
   const connection = resolvePeer(peer);
+  const failFast = (): void => { clearTimeout(timer); timer = undefined; rejectOpen(new Error(HOST_UNREACHABLE)); };
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let rejectOpen!: (cause: Error) => void;
   const channel = new Promise<RTCDataChannel>((resolve, reject) => {
-    timer = setTimeout(() => reject(new Error(`No data channel arrived for room ${code}.`)), 15000);
+    rejectOpen = reject;
+    timer = setTimeout(() => failFast(), 15000);
     connection.ondatachannel = event => {
       clearTimeout(timer);
+      timer = undefined;
       resolve(event.channel);
     };
+    // ICE already knows the path is dead: fail now instead of waiting out the timer.
+    connection.oniceconnectionstatechange = () => { if(connection.iceConnectionState === 'failed') failFast(); };
   });
+  const forgetIceWatch = (): void => { connection.oniceconnectionstatechange = null; };
   try {
     await connection.setRemoteDescription(remote);
     const dataChannel = await channel;
+    forgetIceWatch();
     const answer = await connection.createAnswer();
     await connection.setLocalDescription(answer);
     await gatherComplete(connection);

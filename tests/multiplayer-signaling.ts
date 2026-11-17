@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {encodeSignal,decodeSignal,getSignalUrl,useAutoSignal,exchangeInvite} from '../src/multiplayer/Signaling.ts';
-import {createHostNonce,createRoomCode,parseRoomCode,createRoom,joinRoom,gatherComplete} from '../src/multiplayer/Room.ts';
+import {createHostNonce,createRoomCode,parseRoomCode,createRoom,joinRoom,gatherComplete,iceServersFrom,HOST_UNREACHABLE} from '../src/multiplayer/Room.ts';
 
 // offer->answer round-trip as pure base64 payloads (no RTCPeerConnection in Node).
 const offer={type:'offer',sdp:'v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\n'};
@@ -29,6 +29,42 @@ assert.throws(()=>decodeSignal('!!!not-base64!!!'),/Invalid signal/);
 assert.throws(()=>decodeSignal(''),/Invalid signal/);
 await assert.rejects(joinRoom('bad code',encodeSignal(answer)),/Invalid room code/);
 await assert.rejects(createRoom({key:''}),/Invalid room code/);
+
+// Pasted blobs are shape-checked before any RTC work: a valid-base64 blob
+// that is not an offer fails fast with an actionable message, not a 15s wait.
+await assert.rejects(joinRoom(code, encodeSignal('hello')),/not the host Offer/);
+await assert.rejects(joinRoom(code, encodeSignal(answer)),/not the host Offer/);
+
+// Unreachable hosts fail with the actionable message (timer or ICE failure).
+{
+  const waiting: any = {
+    iceConnectionState: 'checking',
+    ondatachannel: null,
+    _ice: null,
+    set oniceconnectionstatechange(fn: (() => void) | null) { this._ice = fn; },
+    get oniceconnectionstatechange(): ((() => void) | null) { return this._ice; },
+    async setRemoteDescription() {
+      // ICE already knows the path is dead: fail now, not after the timer.
+      setTimeout(() => { waiting.iceConnectionState = 'failed'; waiting._ice?.(); }, 10);
+    },
+    close() {},
+  };
+  const t0 = Date.now();
+  await assert.rejects(
+    joinRoom(code, encodedOffer, waiting),
+    (e: unknown) => e instanceof Error && e.message === HOST_UNREACHABLE,
+    'ICE failure surfaces the actionable message',
+  );
+  assert(Date.now() - t0 < 15000, 'ICE failure fails fast instead of waiting out the timer');
+}
+
+// Optional TURN relay for direct-path-less networks (self-hosted, env-only).
+assert.equal(iceServersFrom({}), undefined, 'no TURN without VITE_TURN_URL');
+assert.deepEqual(
+  iceServersFrom({VITE_TURN_URL: 'turn:example.com:3478', VITE_TURN_USERNAME: 'u', VITE_TURN_CREDENTIAL: 'p'}),
+  [{urls: 'turn:example.com:3478', username: 'u', credential: 'p'}],
+);
+assert.deepEqual(iceServersFrom({VITE_TURN_URL: 'turn:example.com:3478'}), [{urls: 'turn:example.com:3478'}]);
 
 // gatherComplete: single-shot SDP must wait for ICE (no trickle). Fake peer.
 const fakePeer = () => {

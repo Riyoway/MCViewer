@@ -24,7 +24,7 @@ import { Player,lockPointer } from './core/Player';
 import { PlayerModel } from './core/PlayerModel';
 import { Presence, type EnvMessage } from './multiplayer/Presence';
 import { WorldGate, encodeGateMessage, decodeGateMessage, type WorldGateMessage } from './multiplayer/WorldGate';
-import { createRoom, joinRoom, parseRoomCode } from './multiplayer/Room.ts';
+import { createRoom, joinRoom, parseRoomCode, HOST_UNREACHABLE } from './multiplayer/Room.ts';
 import { EditSync, type EditMessage } from './multiplayer/EditSync.ts';
 import type { BlockChange } from './minecraft/Building';
 import { HEIGHT, RADIUS } from './core/Collision';
@@ -187,10 +187,11 @@ async function init() {
       syncMpEnter();
     } catch(cause) {
       const message = String(cause instanceof Error ? cause.message : cause);
-      // The 15s data-channel timeout means the host is gone, the offer is
-      // stale, or the networks cannot reach each other: say what to do
-      // instead of dumping the technical reason.
-      if(/No data channel arrived/.test(message)) setText($('room-status'), 'Could not reach the host. Ask for a fresh code and keep the host screen open.');
+      if(message === 'That is not the host Offer. Copy the full text from the host screen.'
+        || message === 'That is not the guest Answer. Copy the full text from the guest screen.') setText($('room-status'), message);
+      // The data channel never opened: host gone, stale blob, or blocked
+      // network. Say what to do instead of dumping the technical reason.
+      if(message === HOST_UNREACHABLE) setText($('room-status'), HOST_UNREACHABLE);
       else setLiteral($('room-status'), message);
     }
   })().catch(report);
